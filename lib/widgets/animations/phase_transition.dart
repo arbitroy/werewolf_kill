@@ -4,7 +4,7 @@ class PhaseTransition extends StatefulWidget {
   final bool isNight;
   final VoidCallback onComplete;
 
-  PhaseTransition({
+  const PhaseTransition({super.key, 
     required this.isNight,
     required this.onComplete,
   });

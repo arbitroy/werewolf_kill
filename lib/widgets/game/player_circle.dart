@@ -6,10 +6,10 @@ class PlayerCircle extends StatelessWidget {
   final double radius;
 
   const PlayerCircle({
-    Key? key,
+    super.key,
     required this.players,
     this.radius = 120,
-  }) : super(key: key);
+  });
 
   @override
   Widget build(BuildContext context) {

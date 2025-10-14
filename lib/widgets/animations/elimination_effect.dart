@@ -4,7 +4,7 @@ class EliminationEffect extends StatefulWidget {
   final String playerName;
   final VoidCallback onComplete;
 
-  EliminationEffect({
+  const EliminationEffect({super.key, 
     required this.playerName,
     required this.onComplete,
   });

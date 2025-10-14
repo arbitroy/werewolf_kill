@@ -4,7 +4,7 @@ class RoleReveal extends StatefulWidget {
   final String role;
   final VoidCallback onComplete;
 
-  RoleReveal({
+  const RoleReveal({super.key, 
     required this.role,
     required this.onComplete,
   });

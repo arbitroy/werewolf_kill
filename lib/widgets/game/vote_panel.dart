@@ -6,11 +6,11 @@ class VotePanel extends StatelessWidget {
   final bool isVoting;
 
   const VotePanel({
-    Key? key,
+    super.key,
     this.selectedPlayerId,
     required this.onVote,
     this.isVoting = false,
-  }) : super(key: key);
+  });
 
   @override
   Widget build(BuildContext context) {
