@@ -69,6 +69,11 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
   }
 
   Widget _buildTopBar() {
+    // FIX: Safely handle room ID display
+    final displayRoomId = widget.roomId.length > 8 
+        ? widget.roomId.substring(0, 8) 
+        : widget.roomId;
+    
     return Padding(
       padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       child: Row(
@@ -81,7 +86,7 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
           Column(
             children: [
               Text(
-                'Room ${widget.roomId.substring(0, 6)}',
+                'Room $displayRoomId',
                 style: TextStyle(
                   fontFamily: 'Cinzel',
                   fontSize: 16,

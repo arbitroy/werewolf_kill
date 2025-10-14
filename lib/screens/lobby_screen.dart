@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import 'waiting_room_screen.dart';
+
 class LobbyScreen extends StatefulWidget {
   final String userId;
   final String username;
@@ -461,6 +463,9 @@ class _LobbyScreenState extends State<LobbyScreen> with SingleTickerProviderStat
     // TODO: Call API to join room
     print('Joining room: ${room.name}');
     // Navigate to waiting room
+    Navigator.push(context, MaterialPageRoute(
+      builder: (context) => WaitingRoomScreen(roomId: room.id, roomName: 'Midnight Hunters', isHost: true,)
+    ));
   }
 
   void _quickMatch() {

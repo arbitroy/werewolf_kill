@@ -1,68 +1,76 @@
 import 'package:flutter/material.dart';
 
-import 'game_screen.dart';
+class ResultScreen extends StatefulWidget {
+  final String winner; // 'WEREWOLVES' or 'VILLAGERS'
+  final List<ResultPlayer> players;
 
-class WaitingRoomScreen extends StatefulWidget {
-  final String roomId;
-  final String roomName;
-  final bool isHost;
-
-  const WaitingRoomScreen({super.key, 
-    required this.roomId,
-    required this.roomName,
-    required this.isHost,
+  const ResultScreen({
+    super.key,
+    required this.winner,
+    required this.players,
   });
 
   @override
-  _WaitingRoomScreenState createState() => _WaitingRoomScreenState();
+  _ResultScreenState createState() => _ResultScreenState();
 }
 
-class _WaitingRoomScreenState extends State<WaitingRoomScreen> {
-  List<WaitingPlayer> players = [];
+class _ResultScreenState extends State<ResultScreen>
+    with SingleTickerProviderStateMixin {
+  late AnimationController _controller;
+  late Animation<double> _scaleAnimation;
+  late Animation<double> _fadeAnimation;
 
   @override
   void initState() {
     super.initState();
-    _loadPlayers();
-    // TODO: Subscribe to WebSocket for player join/leave events
-  }
 
-  void _loadPlayers() {
-    setState(() {
-      players = [
-        WaitingPlayer(id: '1', username: 'Alice', isHost: true, isReady: true),
-        WaitingPlayer(id: '2', username: 'Bob', isHost: false, isReady: true),
-        WaitingPlayer(id: '3', username: 'Charlie', isHost: false, isReady: false),
-      ];
-    });
+    _controller = AnimationController(
+      duration: Duration(seconds: 2),
+      vsync: this,
+    );
+
+    _scaleAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
+      CurvedAnimation(
+        parent: _controller,
+        curve: Curves.elasticOut,
+      ),
+    );
+
+    _fadeAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
+      CurvedAnimation(
+        parent: _controller,
+        curve: Interval(0.3, 1.0, curve: Curves.easeIn),
+      ),
+    );
+
+    _controller.forward();
   }
 
   @override
   Widget build(BuildContext context) {
-    final canStart = widget.isHost && players.length >= 3;
-    
+    final isWerewolfWin = widget.winner == 'WEREWOLVES';
+
     return Scaffold(
       body: Container(
         decoration: BoxDecoration(
           gradient: LinearGradient(
             begin: Alignment.topCenter,
             end: Alignment.bottomCenter,
-            colors: [
-              Color(0xFF0F0A1E),
-              Color(0xFF2D1B4E),
-              Color(0xFF1A0F2E),
-            ],
+            colors: isWerewolfWin
+                ? [Color(0xFF8B0000), Color(0xFF2D1B4E), Color(0xFF0F0A1E)]
+                : [Color(0xFF2E7D32), Color(0xFF2D1B4E), Color(0xFF0F0A1E)],
           ),
         ),
         child: SafeArea(
           child: Column(
             children: [
-              _buildHeader(),
-              SizedBox(height: 24),
-              _buildRoomInfo(),
-              SizedBox(height: 32),
-              Expanded(child: _buildPlayerList()),
-              _buildBottomBar(canStart),
+              SizedBox(height: 60),
+              _buildWinnerAnnouncement(isWerewolfWin),
+              SizedBox(height: 40),
+              _buildPlayerStats(),
+              Spacer(),
+              _buildBottomButtons(),
+              SizedBox(height: 20),
             ],
           ),
         ),
@@ -70,279 +78,237 @@ class _WaitingRoomScreenState extends State<WaitingRoomScreen> {
     );
   }
 
-  Widget _buildHeader() {
-    return Padding(
-      padding: EdgeInsets.all(16),
-      child: Row(
-        children: [
-          IconButton(
-            icon: Icon(Icons.arrow_back, color: Color(0xFFC0C0D8)),
-            onPressed: () => _showLeaveDialog(),
-          ),
-          Expanded(
-            child: Center(
-              child: Text(
-                widget.roomName,
+  Widget _buildWinnerAnnouncement(bool isWerewolfWin) {
+    return AnimatedBuilder(
+      animation: _controller,
+      builder: (context, child) {
+        return Transform.scale(
+          scale: _scaleAnimation.value,
+          child: Column(
+            children: [
+              Text(
+                isWerewolfWin ? '🐺' : '🏆',
+                style: TextStyle(fontSize: 100),
+              ),
+              SizedBox(height: 16),
+              Text(
+                isWerewolfWin ? 'Werewolves Win!' : 'Villagers Win!',
                 style: TextStyle(
                   fontFamily: 'Cinzel',
-                  fontSize: 24,
+                  fontSize: 36,
                   fontWeight: FontWeight.bold,
+                  color: Colors.white,
+                ),
+              ),
+              SizedBox(height: 8),
+              Text(
+                isWerewolfWin
+                    ? 'The village has fallen to darkness'
+                    : 'The village is saved!',
+                style: TextStyle(
+                  fontFamily: 'Lora',
+                  fontSize: 16,
+                  color: Colors.white.withOpacity(0.8),
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildPlayerStats() {
+    return Expanded(
+      child: FadeTransition(
+        opacity: _fadeAnimation,
+        child: Card(
+          margin: EdgeInsets.all(16),
+          color: Color(0xFF1A0F2E),
+          child: Column(
+            children: [
+              Padding(
+                padding: EdgeInsets.all(16),
+                child: Text(
+                  'Final Results',
+                  style: TextStyle(
+                    fontFamily: 'Cinzel',
+                    fontSize: 20,
+                    color: Color(0xFFC0C0D8),
+                  ),
+                ),
+              ),
+              Divider(color: Color(0xFFC0C0D8).withOpacity(0.3)),
+              Expanded(
+                child: ListView.builder(
+                  padding: EdgeInsets.all(16),
+                  itemCount: widget.players.length,
+                  itemBuilder: (context, index) {
+                    return _buildPlayerRow(widget.players[index]);
+                  },
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildPlayerRow(ResultPlayer player) {
+    Color roleColor;
+    String roleIcon;
+
+    switch (player.role) {
+      case 'WEREWOLF':
+        roleColor = Color(0xFF8B0000);
+        roleIcon = '🐺';
+        break;
+      case 'SEER':
+        roleColor = Color(0xFFD4AF37);
+        roleIcon = '🔮';
+        break;
+      default:
+        roleColor = Color(0xFF2E7D32);
+        roleIcon = '👤';
+    }
+
+    return Padding(
+      padding: EdgeInsets.only(bottom: 12),
+      child: Row(
+        children: [
+          Container(
+            width: 40,
+            height: 40,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: player.survived ? Color(0xFF2E7D32) : Color(0xFF424242),
+            ),
+            child: Center(
+              child: Text(
+                player.username[0].toUpperCase(),
+                style: TextStyle(
+                  fontFamily: 'Cinzel',
+                  fontSize: 18,
+                  color: Colors.white,
+                ),
+              ),
+            ),
+          ),
+          SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  player.username,
+                  style: TextStyle(
+                    fontFamily: 'Cinzel',
+                    fontSize: 16,
+                    color: Color(0xFFC0C0D8),
+                  ),
+                ),
+                Text(
+                  player.survived ? 'Survived' : 'Eliminated',
+                  style: TextStyle(
+                    fontFamily: 'Lora',
+                    fontSize: 12,
+                    color: player.survived
+                        ? Color(0xFF2E7D32)
+                        : Color(0xFF424242),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          Container(
+            padding: EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+            decoration: BoxDecoration(
+              color: roleColor.withOpacity(0.2),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: roleColor),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(roleIcon, style: TextStyle(fontSize: 16)),
+                SizedBox(width: 4),
+                Text(
+                  player.role,
+                  style: TextStyle(
+                    fontFamily: 'Cinzel',
+                    fontSize: 12,
+                    color: roleColor,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildBottomButtons() {
+    return Padding(
+      padding: EdgeInsets.symmetric(horizontal: 16),
+      child: Row(
+        children: [
+          Expanded(
+            child: OutlinedButton(
+              onPressed: () {
+                Navigator.popUntil(context, (route) => route.isFirst);
+              },
+              style: OutlinedButton.styleFrom(
+                side: BorderSide(color: Color(0xFFC0C0D8)),
+                padding: EdgeInsets.symmetric(vertical: 16),
+              ),
+              child: Text(
+                'Back to Lobby',
+                style: TextStyle(
+                  fontFamily: 'Cinzel',
                   color: Color(0xFFC0C0D8),
                 ),
               ),
             ),
           ),
-          SizedBox(width: 48), // Balance for back button
-        ],
-      ),
-    );
-  }
-
-  Widget _buildRoomInfo() {
-    return Card(
-      margin: EdgeInsets.symmetric(horizontal: 16),
-      child: Padding(
-        padding: EdgeInsets.all(20),
-        child: Column(
-          children: [
-            Icon(
-              Icons.nightlight_round,
-              size: 60,
-              color: Color(0xFFD4AF37),
-            ),
-            SizedBox(height: 16),
-            Text(
-              'Waiting for players...',
-              style: TextStyle(
-                fontFamily: 'Cinzel',
-                fontSize: 18,
-                color: Color(0xFFC0C0D8),
+          SizedBox(width: 16),
+          Expanded(
+            child: ElevatedButton(
+              onPressed: () {
+                Navigator.pop(context);
+              },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Color(0xFF2E7D32),
+                padding: EdgeInsets.symmetric(vertical: 16),
               ),
-            ),
-            SizedBox(height: 8),
-            Text(
-              '${players.length}/8 players',
-              style: TextStyle(
-                fontFamily: 'Lora',
-                fontSize: 16,
-                color: Color(0xFFD4AF37),
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-            if (players.length < 3)
-              Padding(
-                padding: EdgeInsets.only(top: 8),
-                child: Text(
-                  'Need ${3 - players.length} more to start',
-                  style: TextStyle(
-                    fontFamily: 'Lora',
-                    fontSize: 14,
-                    color: Color(0xFFC0C0D8).withOpacity(0.7),
-                  ),
-                ),
-              ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildPlayerList() {
-    return ListView.builder(
-      padding: EdgeInsets.symmetric(horizontal: 16),
-      itemCount: players.length,
-      itemBuilder: (context, index) {
-        return _buildPlayerCard(players[index]);
-      },
-    );
-  }
-
-  Widget _buildPlayerCard(WaitingPlayer player) {
-    return Card(
-      margin: EdgeInsets.only(bottom: 12),
-      child: Padding(
-        padding: EdgeInsets.all(16),
-        child: Row(
-          children: [
-            Container(
-              width: 50,
-              height: 50,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                color: Color(0xFF2D1B4E),
-                border: Border.all(
-                  color: player.isReady ? Color(0xFF2E7D32) : Color(0xFF424242),
-                  width: 3,
-                ),
-              ),
-              child: Center(
-                child: Text(
-                  player.username[0].toUpperCase(),
-                  style: TextStyle(
-                    fontFamily: 'Cinzel',
-                    fontSize: 24,
-                    color: Color(0xFFC0C0D8),
-                  ),
-                ),
-              ),
-            ),
-            SizedBox(width: 16),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      Text(
-                        player.username,
-                        style: TextStyle(
-                          fontFamily: 'Cinzel',
-                          fontSize: 16,
-                          color: Color(0xFFC0C0D8),
-                        ),
-                      ),
-                      if (player.isHost) ...[
-                        SizedBox(width: 8),
-                        Container(
-                          padding: EdgeInsets.symmetric(
-                            horizontal: 8,
-                            vertical: 2,
-                          ),
-                          decoration: BoxDecoration(
-                            color: Color(0xFFD4AF37),
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                          child: Text(
-                            'HOST',
-                            style: TextStyle(
-                              fontFamily: 'Cinzel',
-                              fontSize: 10,
-                              color: Color(0xFF1A0F2E),
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ],
-                  ),
-                  SizedBox(height: 4),
-                  Text(
-                    player.isReady ? 'Ready' : 'Not ready',
-                    style: TextStyle(
-                      fontFamily: 'Lora',
-                      fontSize: 14,
-                      color: player.isReady 
-                        ? Color(0xFF2E7D32) 
-                        : Color(0xFF424242),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            Icon(
-              player.isReady ? Icons.check_circle : Icons.pending,
-              color: player.isReady ? Color(0xFF2E7D32) : Color(0xFF424242),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildBottomBar(bool canStart) {
-    return Container(
-      padding: EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Color(0xFF1A0F2E),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.3),
-            blurRadius: 10,
-            offset: Offset(0, -4),
-          ),
-        ],
-      ),
-      child: widget.isHost
-          ? SizedBox(
-              width: double.infinity,
-              height: 56,
-              child: ElevatedButton(
-                onPressed: canStart ? _startGame : null,
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: canStart 
-                    ? Color(0xFF2E7D32) 
-                    : Color(0xFF424242),
-                ),
-                child: Text(
-                  canStart ? 'Start Game' : 'Waiting for players...',
-                ),
-              ),
-            )
-          : Center(
               child: Text(
-                'Waiting for host to start...',
-                style: TextStyle(
-                  fontFamily: 'Lora',
-                  fontSize: 16,
-                  color: Color(0xFFC0C0D8).withOpacity(0.7),
-                ),
+                'Play Again',
+                style: TextStyle(fontFamily: 'Cinzel'),
               ),
             ),
-    );
-  }
-
-  void _startGame() {
-    // TODO: Call API to start game
-    Navigator.pushReplacement(
-      context,
-      MaterialPageRoute(
-        builder: (context) => GameScreen(roomId: widget.roomId),
-      ),
-    );
-  }
-
-  void _showLeaveDialog() {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        backgroundColor: Color(0xFF1A0F2E),
-        title: Text(
-          'Leave Room?',
-          style: TextStyle(fontFamily: 'Cinzel', color: Color(0xFFC0C0D8)),
-        ),
-        content: Text(
-          'Are you sure you want to leave?',
-          style: TextStyle(fontFamily: 'Lora', color: Color(0xFFC0C0D8)),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: Text('Cancel', style: TextStyle(color: Color(0xFFC0C0D8))),
-          ),
-          ElevatedButton(
-            onPressed: () {
-              Navigator.pop(context); // Close dialog
-              Navigator.pop(context); // Leave room
-            },
-            style: ElevatedButton.styleFrom(backgroundColor: Color(0xFF8B0000)),
-            child: Text('Leave'),
           ),
         ],
       ),
     );
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
   }
 }
 
-class WaitingPlayer {
-  final String id;
+class ResultPlayer {
   final String username;
-  final bool isHost;
-  final bool isReady;
+  final String role;
+  final bool survived;
 
-  WaitingPlayer({
-    required this.id,
+  ResultPlayer({
     required this.username,
-    required this.isHost,
-    required this.isReady,
+    required this.role,
+    required this.survived,
   });
 }
