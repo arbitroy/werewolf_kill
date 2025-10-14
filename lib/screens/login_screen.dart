@@ -12,6 +12,7 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
   final _passwordController = TextEditingController();
   late AnimationController _moonController;
   late Animation<double> _moonAnimation;
+  bool _isLoading = false;
 
   @override
   void initState() {
@@ -114,6 +115,7 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
                         children: [
                           TextField(
                             controller: _usernameController,
+                            enabled: !_isLoading,
                             style: TextStyle(color: Color(0xFFC0C0D8)),
                             decoration: InputDecoration(
                               labelText: 'Username',
@@ -143,6 +145,7 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
                           TextField(
                             controller: _passwordController,
                             obscureText: true,
+                            enabled: !_isLoading,
                             style: TextStyle(color: Color(0xFFC0C0D8)),
                             decoration: InputDecoration(
                               labelText: 'Password',
@@ -173,15 +176,24 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
                             width: double.infinity,
                             height: 56,
                             child: ElevatedButton(
-                              onPressed: _handleLogin,
-                              child: Text('Enter Village'),
+                              onPressed: _isLoading ? null : _handleLogin,
+                              child: _isLoading
+                                  ? SizedBox(
+                                      width: 24,
+                                      height: 24,
+                                      child: CircularProgressIndicator(
+                                        strokeWidth: 2,
+                                        color: Color(0xFFC0C0D8),
+                                      ),
+                                    )
+                                  : Text('Enter Village'),
                             ),
                           ),
                           
                           SizedBox(height: 16),
                           
                           TextButton(
-                            onPressed: _handleRegister,
+                            onPressed: _isLoading ? null : _handleRegister,
                             child: Text(
                               'Create New Account',
                               style: TextStyle(
@@ -203,14 +215,57 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
     );
   }
 
-  void _handleLogin() {
-    // TODO: Call AuthService
-    print('Login: ${_usernameController.text}');
-    Navigator.pushReplacementNamed(context, '/lobby');
+  void _handleLogin() async {
+    // Validate input
+    if (_usernameController.text.isEmpty) {
+      _showError('Please enter a username');
+      return;
+    }
+    
+    if (_passwordController.text.isEmpty) {
+      _showError('Please enter a password');
+      return;
+    }
+
+    setState(() => _isLoading = true);
+
+    try {
+      // TODO: Call AuthService
+      print('Login: ${_usernameController.text}');
+      
+      // Simulate API call
+      await Future.delayed(Duration(seconds: 1));
+      
+      // Navigate to lobby with user data
+      Navigator.pushReplacementNamed(
+        context,
+        '/lobby',
+        arguments: {
+          'userId': 'user-${DateTime.now().millisecondsSinceEpoch}',
+          'username': _usernameController.text,
+        },
+      );
+    } catch (e) {
+      _showError('Login failed: $e');
+    } finally {
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
+    }
   }
 
   void _handleRegister() {
-    // TODO: Navigate to register screen
-    print('Register');
+    // TODO: Navigate to register screen or show register dialog
+    _showError('Registration not implemented yet. Use any username/password to login.');
+  }
+
+  void _showError(String message) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        backgroundColor: Color(0xFF8B0000),
+        behavior: SnackBarBehavior.floating,
+      ),
+    );
   }
 }
