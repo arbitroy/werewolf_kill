@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
-
+import 'package:provider/provider.dart';
+import '../providers/room_provider.dart';
+import '../providers/auth_provider.dart';
+import '../core/models/room.dart';
 import 'waiting_room_screen.dart';
 
 class LobbyScreen extends StatefulWidget {
@@ -14,8 +17,6 @@ class LobbyScreen extends StatefulWidget {
 
 class _LobbyScreenState extends State<LobbyScreen> with SingleTickerProviderStateMixin {
   late AnimationController _starController;
-  List<Room> availableRooms = [];
-  bool isLoading = true;
 
   @override
   void initState() {
@@ -24,37 +25,24 @@ class _LobbyScreenState extends State<LobbyScreen> with SingleTickerProviderStat
       duration: Duration(seconds: 4),
       vsync: this,
     )..repeat();
-    _loadRooms();
-  }
-
-  Future<void> _loadRooms() async {
-    // TODO: Call API to get rooms
-    await Future.delayed(Duration(seconds: 1));
-    setState(() {
-      availableRooms = _mockRooms();
-      isLoading = false;
+    
+    // Load rooms when screen opens
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      // Set token on RoomProvider from AuthProvider
+      final authProvider = Provider.of<AuthProvider>(context, listen: false);
+      final roomProvider = Provider.of<RoomProvider>(context, listen: false);
+      
+      if (authProvider.token != null) {
+        roomProvider.setToken(authProvider.token!);
+      }
+      
+      _loadRooms();
     });
   }
 
-  List<Room> _mockRooms() {
-    return [
-      Room(
-        id: '1',
-        name: 'Midnight Hunters',
-        hostName: 'Alice',
-        currentPlayers: 4,
-        maxPlayers: 8,
-        status: 'WAITING',
-      ),
-      Room(
-        id: '2',
-        name: 'Full Moon Party',
-        hostName: 'Bob',
-        currentPlayers: 6,
-        maxPlayers: 8,
-        status: 'WAITING',
-      ),
-    ];
+  Future<void> _loadRooms() async {
+    final roomProvider = Provider.of<RoomProvider>(context, listen: false);
+    await roomProvider.loadRooms();
   }
 
   @override
@@ -211,49 +199,93 @@ class _LobbyScreenState extends State<LobbyScreen> with SingleTickerProviderStat
 
   Widget _buildRoomsList() {
     return Expanded(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Padding(
-            padding: EdgeInsets.symmetric(horizontal: 16),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Text(
-                  'Available Rooms',
-                  style: TextStyle(
-                    fontFamily: 'Cinzel',
-                    fontSize: 20,
-                    fontWeight: FontWeight.bold,
-                    color: Color(0xFFC0C0D8),
+      child: Consumer<RoomProvider>(
+        builder: (context, roomProvider, child) {
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Padding(
+                padding: EdgeInsets.symmetric(horizontal: 16),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(
+                      'Available Rooms',
+                      style: TextStyle(
+                        fontFamily: 'Cinzel',
+                        fontSize: 20,
+                        fontWeight: FontWeight.bold,
+                        color: Color(0xFFC0C0D8),
+                      ),
+                    ),
+                    IconButton(
+                      icon: Icon(Icons.refresh, color: Color(0xFFD4AF37)),
+                      onPressed: roomProvider.isLoading ? null : _loadRooms,
+                    ),
+                  ],
+                ),
+              ),
+              SizedBox(height: 12),
+              
+              // Error message
+              if (roomProvider.error != null)
+                Padding(
+                  padding: EdgeInsets.symmetric(horizontal: 16),
+                  child: Container(
+                    padding: EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: Colors.red.withOpacity(0.2),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Row(
+                      children: [
+                        Icon(Icons.error, color: Colors.red),
+                        SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            roomProvider.error!,
+                            style: TextStyle(color: Colors.red),
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
                 ),
-                IconButton(
-                  icon: Icon(Icons.refresh, color: Color(0xFFD4AF37)),
-                  onPressed: _loadRooms,
-                ),
-              ],
-            ),
-          ),
-          SizedBox(height: 12),
-          Expanded(
-            child: isLoading
-                ? Center(
-                    child: CircularProgressIndicator(
-                      color: Color(0xFFD4AF37),
-                    ),
-                  )
-                : availableRooms.isEmpty
-                    ? _buildEmptyState()
-                    : ListView.builder(
-                        padding: EdgeInsets.symmetric(horizontal: 16),
-                        itemCount: availableRooms.length,
-                        itemBuilder: (context, index) {
-                          return _buildRoomCard(availableRooms[index]);
-                        },
-                      ),
-          ),
-        ],
+              
+              SizedBox(height: 12),
+              
+              Expanded(
+                child: roomProvider.isLoading
+                    ? Center(
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            CircularProgressIndicator(
+                              color: Color(0xFFD4AF37),
+                            ),
+                            SizedBox(height: 16),
+                            Text(
+                              'Loading rooms...',
+                              style: TextStyle(
+                                color: Color(0xFFC0C0D8).withOpacity(0.7),
+                              ),
+                            ),
+                          ],
+                        ),
+                      )
+                    : roomProvider.rooms.isEmpty
+                        ? _buildEmptyState()
+                        : ListView.builder(
+                            padding: EdgeInsets.symmetric(horizontal: 16),
+                            itemCount: roomProvider.rooms.length,
+                            itemBuilder: (context, index) {
+                              return _buildRoomCard(roomProvider.rooms[index]);
+                            },
+                          ),
+              ),
+            ],
+          );
+        },
       ),
     );
   }
@@ -295,32 +327,32 @@ class _LobbyScreenState extends State<LobbyScreen> with SingleTickerProviderStat
     final isFull = room.currentPlayers >= room.maxPlayers;
     
     return Card(
+      color: Color(0xFF1A0F2E),
       margin: EdgeInsets.only(bottom: 12),
       child: InkWell(
         onTap: isFull ? null : () => _joinRoom(room),
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(12),
         child: Padding(
           padding: EdgeInsets.all(16),
           child: Row(
             children: [
+              // Room icon
               Container(
                 width: 60,
                 height: 60,
                 decoration: BoxDecoration(
                   color: Color(0xFF2D1B4E),
                   borderRadius: BorderRadius.circular(12),
-                  border: Border.all(
-                    color: Color(0xFFD4AF37),
-                    width: 2,
-                  ),
                 ),
                 child: Icon(
-                  Icons.nightlight_round,
-                  color: Color(0xFFC0C0D8),
+                  Icons.meeting_room,
+                  color: Color(0xFFD4AF37),
                   size: 30,
                 ),
               ),
               SizedBox(width: 16),
+              
+              // Room details
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -336,14 +368,14 @@ class _LobbyScreenState extends State<LobbyScreen> with SingleTickerProviderStat
                     ),
                     SizedBox(height: 4),
                     Text(
-                      'Host: ${room.hostName}',
+                      'Host: ${room.hostId}',
                       style: TextStyle(
                         fontFamily: 'Lora',
                         fontSize: 14,
                         color: Color(0xFFC0C0D8).withOpacity(0.7),
                       ),
                     ),
-                    SizedBox(height: 8),
+                    SizedBox(height: 4),
                     Row(
                       children: [
                         Icon(
@@ -358,14 +390,33 @@ class _LobbyScreenState extends State<LobbyScreen> with SingleTickerProviderStat
                             fontFamily: 'Lora',
                             fontSize: 14,
                             color: Color(0xFFD4AF37),
-                            fontWeight: FontWeight.bold,
                           ),
                         ),
+                        if (isFull) ...[
+                          SizedBox(width: 8),
+                          Container(
+                            padding: EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: Colors.red.withOpacity(0.2),
+                              borderRadius: BorderRadius.circular(4),
+                            ),
+                            child: Text(
+                              'FULL',
+                              style: TextStyle(
+                                fontSize: 10,
+                                color: Colors.red,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ),
+                        ],
                       ],
                     ),
                   ],
                 ),
               ),
+              
+              // Join button
               Icon(
                 isFull ? Icons.lock : Icons.arrow_forward_ios,
                 color: isFull 
@@ -436,8 +487,8 @@ class _LobbyScreenState extends State<LobbyScreen> with SingleTickerProviderStat
           ElevatedButton(
             onPressed: () {
               if (nameController.text.isNotEmpty) {
-                _createRoom(nameController.text);
                 Navigator.pop(context);
+                _createRoom(nameController.text);
               }
             },
             style: ElevatedButton.styleFrom(
@@ -451,27 +502,82 @@ class _LobbyScreenState extends State<LobbyScreen> with SingleTickerProviderStat
   }
 
   void _createRoom(String roomName) async {
-    // TODO: Call API to create room
-    print('Creating room: $roomName');
-    // Navigate to waiting room
-    // Navigator.push(context, MaterialPageRoute(
-    //   builder: (context) => WaitingRoomScreen(roomId: newRoomId)
-    // ));
+    final roomProvider = Provider.of<RoomProvider>(context, listen: false);
+    final authProvider = Provider.of<AuthProvider>(context, listen: false);
+    
+    print('🔵 Creating room: $roomName');
+    
+    final room = await roomProvider.createRoom(
+      roomName,
+      authProvider.currentUser!.id,
+    );
+    
+    if (room != null && mounted) {
+      print('✅ Room created: ${room.id}');
+      // Navigate to waiting room
+      Navigator.pushNamed(
+        context,
+        '/waiting',
+        arguments: {
+          'roomId': room.id,
+          'roomName': room.name,
+          'isHost': true,
+        },
+      );
+    } else if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(roomProvider.error ?? 'Failed to create room'),
+          backgroundColor: Color(0xFF8B0000),
+        ),
+      );
+    }
   }
 
   void _joinRoom(Room room) async {
-    // TODO: Call API to join room
-    print('Joining room: ${room.name}');
-    // Navigate to waiting room
-    Navigator.push(context, MaterialPageRoute(
-      builder: (context) => WaitingRoomScreen(roomId: room.id, roomName: 'Midnight Hunters', isHost: true,)
-    ));
+    final roomProvider = Provider.of<RoomProvider>(context, listen: false);
+    final authProvider = Provider.of<AuthProvider>(context, listen: false);
+    
+    print('🔵 Joining room: ${room.name}');
+    
+    final success = await roomProvider.joinRoom(
+      room.id,
+      authProvider.currentUser!.id,
+    );
+    
+    if (success && mounted) {
+      print('✅ Joined room: ${room.id}');
+      // Navigate to waiting room
+      Navigator.pushNamed(
+        context,
+        '/waiting',
+        arguments: {
+          'roomId': room.id,
+          'roomName': room.name,
+          'isHost': false,
+        },
+      );
+    } else if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(roomProvider.error ?? 'Failed to join room'),
+          backgroundColor: Color(0xFF8B0000),
+        ),
+      );
+    }
   }
 
   void _quickMatch() {
-    // TODO: Find and join first available room
-    if (availableRooms.isNotEmpty) {
-      _joinRoom(availableRooms.first);
+    final roomProvider = Provider.of<RoomProvider>(context, listen: false);
+    
+    if (roomProvider.rooms.isNotEmpty) {
+      // Find first room that's not full
+      final availableRoom = roomProvider.rooms.firstWhere(
+        (room) => room.currentPlayers < room.maxPlayers,
+        orElse: () => roomProvider.rooms.first,
+      );
+      
+      _joinRoom(availableRoom);
     } else {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -487,22 +593,4 @@ class _LobbyScreenState extends State<LobbyScreen> with SingleTickerProviderStat
     _starController.dispose();
     super.dispose();
   }
-}
-
-class Room {
-  final String id;
-  final String name;
-  final String hostName;
-  final int currentPlayers;
-  final int maxPlayers;
-  final String status;
-
-  Room({
-    required this.id,
-    required this.name,
-    required this.hostName,
-    required this.currentPlayers,
-    required this.maxPlayers,
-    required this.status,
-  });
 }

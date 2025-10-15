@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
+import '../providers/auth_provider.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -215,57 +217,155 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
     );
   }
 
-  void _handleLogin() async {
-    // Validate input
-    if (_usernameController.text.isEmpty) {
-      _showError('Please enter a username');
-      return;
-    }
+void _handleLogin() async {
+  if (_usernameController.text.isEmpty) {
+    _showError('Please enter a username');
+    return;
+  }
+  
+  if (_passwordController.text.isEmpty) {
+    _showError('Please enter a password');
+    return;
+  }
+
+  setState(() => _isLoading = true);
+
+  try {
+    final authProvider = Provider.of<AuthProvider>(context, listen: false);
     
-    if (_passwordController.text.isEmpty) {
-      _showError('Please enter a password');
-      return;
-    }
-
-    setState(() => _isLoading = true);
-
-    try {
-      // TODO: Call AuthService
-      print('Login: ${_usernameController.text}');
-      
-      // Simulate API call
-      await Future.delayed(Duration(seconds: 1));
-      
-      // Navigate to lobby with user data
+    // Show cold start warning
+    _showColdStartMessage();
+    
+    print('🔵 Attempting login...');
+    final success = await authProvider.login(
+      _usernameController.text.trim(),
+      _passwordController.text,
+    );
+    
+    if (success && mounted) {
+      print('✅ Login successful!');
       Navigator.pushReplacementNamed(
         context,
         '/lobby',
         arguments: {
-          'userId': 'user-${DateTime.now().millisecondsSinceEpoch}',
-          'username': _usernameController.text,
+          'userId': authProvider.currentUser!.id,
+          'username': authProvider.currentUser!.username,
         },
       );
-    } catch (e) {
-      _showError('Login failed: $e');
-    } finally {
-      if (mounted) {
-        setState(() => _isLoading = false);
+    } else if (mounted) {
+      _showError(authProvider.error ?? 'Login failed');
+    }
+  } catch (e) {
+    print('❌ Login error: $e');
+    if (mounted) {
+      String errorMsg = e.toString().replaceAll('Exception: ', '');
+      if (errorMsg.contains('502') || errorMsg.contains('503')) {
+        _showError('Server is starting up. Please wait 30 seconds and try again.');
+      } else {
+        _showError('Login failed: $errorMsg');
       }
     }
+  } finally {
+    if (mounted) {
+      setState(() => _isLoading = false);
+    }
+  }
+}
+
+void _handleRegister() async {
+  if (_usernameController.text.isEmpty) {
+    _showError('Please enter a username');
+    return;
+  }
+  
+  if (_passwordController.text.isEmpty) {
+    _showError('Please enter a password');
+    return;
+  }
+  
+  if (_passwordController.text.length < 6) {
+    _showError('Password must be at least 6 characters');
+    return;
   }
 
-  void _handleRegister() {
-    // TODO: Navigate to register screen or show register dialog
-    _showError('Registration not implemented yet. Use any username/password to login.');
-  }
+  setState(() => _isLoading = true);
 
-  void _showError(String message) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(message),
-        backgroundColor: Color(0xFF8B0000),
-        behavior: SnackBarBehavior.floating,
-      ),
+  try {
+    final authProvider = Provider.of<AuthProvider>(context, listen: false);
+    
+    // Show cold start warning
+    _showColdStartMessage();
+    
+    print('🔵 Attempting registration...');
+    final success = await authProvider.register(
+      _usernameController.text.trim(),
+      _passwordController.text,
     );
+    
+    if (success && mounted) {
+      print('✅ Registration successful!');
+      Navigator.pushReplacementNamed(
+        context,
+        '/lobby',
+        arguments: {
+          'userId': authProvider.currentUser!.id,
+          'username': authProvider.currentUser!.username,
+        },
+      );
+    } else if (mounted) {
+      _showError(authProvider.error ?? 'Registration failed');
+    }
+  } catch (e) {
+    print('❌ Registration error: $e');
+    if (mounted) {
+      String errorMsg = e.toString().replaceAll('Exception: ', '');
+      if (errorMsg.contains('502') || errorMsg.contains('503') || errorMsg.contains('waking up')) {
+        _showError('Server is starting up. This may take up to 50 seconds on first request.');
+      } else {
+        _showError('Registration failed: $errorMsg');
+      }
+    }
+  } finally {
+    if (mounted) {
+      setState(() => _isLoading = false);
+    }
   }
+}
+
+void _showColdStartMessage() {
+  ScaffoldMessenger.of(context).showSnackBar(
+    SnackBar(
+      content: Row(
+        children: [
+          SizedBox(
+            width: 20,
+            height: 20,
+            child: CircularProgressIndicator(
+              strokeWidth: 2,
+              valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+            ),
+          ),
+          SizedBox(width: 12),
+          Expanded(
+            child: Text('First request may take 30-50s while server wakes up...'),
+          ),
+        ],
+      ),
+      backgroundColor: Color(0xFF1E3A5F),
+      behavior: SnackBarBehavior.floating,
+      duration: Duration(seconds: 5),
+    ),
+  );
+}
+
+void _showError(String message) {
+  ScaffoldMessenger.of(context).showSnackBar(
+    SnackBar(
+      content: Text(message),
+      backgroundColor: Color(0xFF8B0000),
+      behavior: SnackBarBehavior.floating,
+      duration: Duration(seconds: 5),
+    ),
+  );
+}
 }

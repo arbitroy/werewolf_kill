@@ -1,30 +1,50 @@
-enum Role { WEREWOLF, VILLAGER, SEER }
-enum PlayerStatus { ALIVE, DEAD }
-
 class Player {
   final String id;
   final String username;
-  final Role? role; // null until revealed
-  final PlayerStatus status;
-  final bool isHost;
+  final String? role;
+  final bool isAlive;
 
   Player({
     required this.id,
     required this.username,
     this.role,
-    required this.status,
-    this.isHost = false,
+    this.isAlive = true,
   });
 
   factory Player.fromJson(Map<String, dynamic> json) {
     return Player(
-      id: json['id'],
+      id: json['id'] ?? json['playerId'],
       username: json['username'],
-      role: json['role'] != null ? Role.values.byName(json['role']) : null,
-      status: PlayerStatus.values.byName(json['status']),
-      isHost: json['isHost'] ?? false,
+      role: json['role'],
+      isAlive: json['isAlive'] ?? json['alive'] ?? true,
     );
   }
 
-  bool get isAlive => status == PlayerStatus.ALIVE;
+  Map<String, dynamic> toJson() {
+    return {
+      'id': id,
+      'username': username,
+      'role': role,
+      'isAlive': isAlive,
+    };
+  }
+
+  Player copyWith({
+    String? id,
+    String? username,
+    String? role,
+    bool? isAlive,
+  }) {
+    return Player(
+      id: id ?? this.id,
+      username: username ?? this.username,
+      role: role ?? this.role,
+      isAlive: isAlive ?? this.isAlive,
+    );
+  }
+
+  @override
+  String toString() {
+    return 'Player(id: $id, username: $username, role: $role, isAlive: $isAlive)';
+  }
 }

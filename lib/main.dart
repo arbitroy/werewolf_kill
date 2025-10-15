@@ -61,7 +61,7 @@ class WerewolfGame extends StatelessWidget {
             players: args['players'],
           );
         },
-      },
+      }
     );
   }
 }

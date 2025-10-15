@@ -1,6 +1,6 @@
 class AppConstants {
-  // API Configuration
-  static const String baseUrl = 'http://localhost:8080';
+  // PRODUCTION - Use HTTPS for Render deployment
+  static const String baseUrl = 'https://werewolf-backend-jsji.onrender.com';
   static const String apiBaseUrl = '$baseUrl/api';
   static const String wsUrl = '$baseUrl/ws/game';
   
@@ -13,9 +13,9 @@ class AppConstants {
   // Game Configuration
   static const int minPlayersToStart = 3;
   static const int maxPlayersPerRoom = 8;
-  static const int nightPhaseDuration = 60; // seconds
-  static const int dayPhaseDuration = 60; // seconds
-  static const int votingPhaseDuration = 45; // seconds
+  static const int nightPhaseDuration = 60;
+  static const int dayPhaseDuration = 60;
+  static const int votingPhaseDuration = 45;
   
   // Local Storage Keys
   static const String keyAuthToken = 'auth_token';

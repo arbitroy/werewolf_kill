@@ -16,6 +16,11 @@ class RoomProvider with ChangeNotifier {
   bool get isLoading => _isLoading;
   String? get error => _error;
 
+  // Set token from AuthProvider
+  void setToken(String token) {
+    _apiService.setToken(token);
+  }
+
   // Load available rooms
   Future<void> loadRooms() async {
     _isLoading = true;
@@ -23,13 +28,16 @@ class RoomProvider with ChangeNotifier {
     notifyListeners();
 
     try {
+      print('🔵 Loading rooms...');
       final roomsData = await _apiService.getRooms();
       _rooms = roomsData.map((data) => Room.fromJson(data)).toList();
+      print('✅ Loaded ${_rooms.length} rooms');
       
       _isLoading = false;
       notifyListeners();
     } catch (e) {
-      _error = e.toString();
+      print('❌ Load rooms error: $e');
+      _error = e.toString().replaceAll('Exception: ', '');
       _isLoading = false;
       notifyListeners();
     }
@@ -42,8 +50,10 @@ class RoomProvider with ChangeNotifier {
     notifyListeners();
 
     try {
+      print('🔵 Creating room: $roomName for host: $hostId');
       final roomData = await _apiService.createRoom(roomName, hostId);
       final room = Room.fromJson(roomData);
+      print('✅ Room created: ${room.id}');
       
       _currentRoom = room;
       _rooms.add(room);
@@ -52,7 +62,8 @@ class RoomProvider with ChangeNotifier {
       notifyListeners();
       return room;
     } catch (e) {
-      _error = e.toString();
+      print('❌ Create room error: $e');
+      _error = e.toString().replaceAll('Exception: ', '');
       _isLoading = false;
       notifyListeners();
       return null;
@@ -66,7 +77,9 @@ class RoomProvider with ChangeNotifier {
     notifyListeners();
 
     try {
+      print('🔵 Joining room: $roomId as player: $playerId');
       await _apiService.joinRoom(roomId, playerId);
+      print('✅ Joined room successfully');
       
       // Update current room
       _currentRoom = _rooms.firstWhere(
@@ -78,30 +91,8 @@ class RoomProvider with ChangeNotifier {
       notifyListeners();
       return true;
     } catch (e) {
-      _error = e.toString();
-      _isLoading = false;
-      notifyListeners();
-      return false;
-    }
-  }
-
-  // Leave room
-  Future<bool> leaveRoom(String roomId, String playerId) async {
-    _isLoading = true;
-    _error = null;
-    notifyListeners();
-
-    try {
-      // TODO: Call API to leave room
-      // await _apiService.leaveRoom(roomId, playerId);
-      
-      _currentRoom = null;
-      
-      _isLoading = false;
-      notifyListeners();
-      return true;
-    } catch (e) {
-      _error = e.toString();
+      print('❌ Join room error: $e');
+      _error = e.toString().replaceAll('Exception: ', '');
       _isLoading = false;
       notifyListeners();
       return false;

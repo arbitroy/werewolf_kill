@@ -1,19 +1,16 @@
 class User {
   final String id;
   final String username;
-  final String? avatar;
 
   User({
     required this.id,
     required this.username,
-    this.avatar,
   });
 
   factory User.fromJson(Map<String, dynamic> json) {
     return User(
-      id: json['id'],
+      id: json['id'] ?? json['userId'],
       username: json['username'],
-      avatar: json['avatar'],
     );
   }
 
@@ -21,7 +18,11 @@ class User {
     return {
       'id': id,
       'username': username,
-      'avatar': avatar,
     };
+  }
+
+  @override
+  String toString() {
+    return 'User(id: $id, username: $username)';
   }
 }
