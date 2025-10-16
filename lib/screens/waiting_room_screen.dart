@@ -39,6 +39,7 @@ class _WaitingRoomScreenState extends State<WaitingRoomScreen> {
       final myPlayer = Player(
         id: authProvider.currentUser!.id,
         username: authProvider.currentUser!.username,
+        isHost: widget.isHost,
       );
 
       print('🔵 Connecting to room via WebSocket: ${widget.roomId}');

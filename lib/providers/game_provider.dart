@@ -43,7 +43,7 @@ class GameProvider with ChangeNotifier {
       final newPlayer = Player(
         id: data['playerId'],
         username: data['username'],
-        isAlive: true,
+        isHost: data['isHost'] ?? false,
       );
       _players.add(newPlayer);
       notifyListeners();
