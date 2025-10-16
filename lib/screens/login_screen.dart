@@ -15,6 +15,7 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
   late AnimationController _moonController;
   late Animation<double> _moonAnimation;
   bool _isLoading = false;
+  bool _obscurePassword = true; // Add this state variable
 
   @override
   void initState() {
@@ -58,52 +59,56 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  // Animated Moon
+                  // Animated Moon (keep existing animation code)
                   AnimatedBuilder(
                     animation: _moonAnimation,
                     builder: (context, child) {
                       return Transform.translate(
                         offset: Offset(0, _moonAnimation.value),
-                        child: child,
+                        child: Container(
+                          width: 120,
+                          height: 120,
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            color: Color(0xFFC0C0D8),
+                            boxShadow: [
+                              BoxShadow(
+                                color: Color(0xFFC0C0D8).withOpacity(0.5),
+                                blurRadius: 40,
+                                spreadRadius: 10,
+                              ),
+                            ],
+                          ),
+                          child: Icon(
+                            Icons.nightlight_round,
+                            size: 60,
+                            color: Color(0xFF0F0A1E),
+                          ),
+                        ),
                       );
                     },
-                    child: Container(
-                      width: 120,
-                      height: 120,
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        color: Color(0xFFC0C0D8),
-                        boxShadow: [
-                          BoxShadow(
-                            color: Color(0xFFC0C0D8).withOpacity(0.5),
-                            blurRadius: 40,
-                            spreadRadius: 10,
-                          ),
-                        ],
-                      ),
-                      child: Icon(
-                        Icons.nightlight_round,
-                        size: 60,
-                        color: Color(0xFF2D1B4E),
-                      ),
-                    ),
                   ),
                   
-                  SizedBox(height: 32),
+                  SizedBox(height: 24),
                   
-                  // Title
                   Text(
                     'Moonlight Village',
-                    style: Theme.of(context).textTheme.displayLarge,
+                    style: TextStyle(
+                      fontFamily: 'Lora',
+                      fontSize: 32,
+                      fontWeight: FontWeight.bold,
+                      color: Color(0xFFD4AF37),
+                    ),
                   ),
                   
                   SizedBox(height: 8),
                   
                   Text(
-                    'Werewolf',
-                    style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                      color: Color(0xFF8B0000),
-                      letterSpacing: 4,
+                    'A Game of Deception & Deduction',
+                    style: TextStyle(
+                      fontFamily: 'Lora',
+                      fontSize: 14,
+                      color: Color(0xFFC0C0D8).withOpacity(0.7),
                     ),
                   ),
                   
@@ -144,9 +149,10 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
                           
                           SizedBox(height: 16),
                           
+                          // Password field with visibility toggle
                           TextField(
                             controller: _passwordController,
-                            obscureText: true,
+                            obscureText: _obscurePassword,
                             enabled: !_isLoading,
                             style: TextStyle(color: Color(0xFFC0C0D8)),
                             decoration: InputDecoration(
@@ -156,6 +162,19 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
                                 color: Color(0xFFC0C0D8).withOpacity(0.7),
                               ),
                               prefixIcon: Icon(Icons.lock, color: Color(0xFFC0C0D8)),
+                              suffixIcon: IconButton(
+                                icon: Icon(
+                                  _obscurePassword 
+                                    ? Icons.visibility_off 
+                                    : Icons.visibility,
+                                  color: Color(0xFFC0C0D8),
+                                ),
+                                onPressed: () {
+                                  setState(() {
+                                    _obscurePassword = !_obscurePassword;
+                                  });
+                                },
+                              ),
                               enabledBorder: OutlineInputBorder(
                                 borderRadius: BorderRadius.circular(12),
                                 borderSide: BorderSide(
@@ -217,155 +236,139 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
     );
   }
 
-void _handleLogin() async {
-  if (_usernameController.text.isEmpty) {
-    _showError('Please enter a username');
-    return;
-  }
-  
-  if (_passwordController.text.isEmpty) {
-    _showError('Please enter a password');
-    return;
-  }
-
-  setState(() => _isLoading = true);
-
-  try {
-    final authProvider = Provider.of<AuthProvider>(context, listen: false);
-    
-    // Show cold start warning
-    _showColdStartMessage();
-    
-    print('🔵 Attempting login...');
-    final success = await authProvider.login(
-      _usernameController.text.trim(),
-      _passwordController.text,
-    );
-    
-    if (success && mounted) {
-      print('✅ Login successful!');
-      Navigator.pushReplacementNamed(
-        context,
-        '/lobby',
-        arguments: {
-          'userId': authProvider.currentUser!.id,
-          'username': authProvider.currentUser!.username,
-        },
-      );
-    } else if (mounted) {
-      _showError(authProvider.error ?? 'Login failed');
+  void _handleLogin() async {
+    if (_usernameController.text.isEmpty) {
+      _showError('Please enter a username');
+      return;
     }
-  } catch (e) {
-    print('❌ Login error: $e');
-    if (mounted) {
-      String errorMsg = e.toString().replaceAll('Exception: ', '');
-      if (errorMsg.contains('502') || errorMsg.contains('503')) {
-        _showError('Server is starting up. Please wait 30 seconds and try again.');
-      } else {
-        _showError('Login failed: $errorMsg');
+    
+    if (_passwordController.text.isEmpty) {
+      _showError('Please enter a password');
+      return;
+    }
+
+    setState(() => _isLoading = true);
+
+    try {
+      final authProvider = Provider.of<AuthProvider>(context, listen: false);
+      
+      // Show cold start warning
+      _showColdStartMessage();
+      
+      print('🔵 Attempting login...');
+      final success = await authProvider.login(
+        _usernameController.text.trim(),
+        _passwordController.text,
+      );
+      
+      if (success && mounted) {
+        print('✅ Login successful!');
+        Navigator.pushReplacementNamed(
+          context,
+          '/lobby',
+          arguments: {
+            'userId': authProvider.currentUser!.id,
+            'username': authProvider.currentUser!.username,
+          },
+        );
+      } else if (mounted) {
+        _showError(authProvider.error ?? 'Login failed');
+      }
+    } catch (e) {
+      print('❌ Login error: $e');
+      if (mounted) {
+        String errorMsg = e.toString().replaceAll('Exception: ', '');
+        if (errorMsg.contains('502') || errorMsg.contains('503')) {
+          _showError('Server is starting up. Please wait 30 seconds and try again.');
+        } else {
+          _showError('Login failed: $errorMsg');
+        }
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isLoading = false);
       }
     }
-  } finally {
-    if (mounted) {
-      setState(() => _isLoading = false);
+  }
+
+  void _handleRegister() async {
+    if (_usernameController.text.isEmpty) {
+      _showError('Please enter a username');
+      return;
     }
-  }
-}
-
-void _handleRegister() async {
-  if (_usernameController.text.isEmpty) {
-    _showError('Please enter a username');
-    return;
-  }
-  
-  if (_passwordController.text.isEmpty) {
-    _showError('Please enter a password');
-    return;
-  }
-  
-  if (_passwordController.text.length < 6) {
-    _showError('Password must be at least 6 characters');
-    return;
-  }
-
-  setState(() => _isLoading = true);
-
-  try {
-    final authProvider = Provider.of<AuthProvider>(context, listen: false);
     
-    // Show cold start warning
-    _showColdStartMessage();
+    if (_passwordController.text.isEmpty) {
+      _showError('Please enter a password');
+      return;
+    }
     
-    print('🔵 Attempting registration...');
-    final success = await authProvider.register(
-      _usernameController.text.trim(),
-      _passwordController.text,
-    );
-    
-    if (success && mounted) {
-      print('✅ Registration successful!');
-      Navigator.pushReplacementNamed(
-        context,
-        '/lobby',
-        arguments: {
-          'userId': authProvider.currentUser!.id,
-          'username': authProvider.currentUser!.username,
-        },
+    if (_passwordController.text.length < 6) {
+      _showError('Password must be at least 6 characters');
+      return;
+    }
+
+    setState(() => _isLoading = true);
+
+    try {
+      final authProvider = Provider.of<AuthProvider>(context, listen: false);
+      
+      // Show cold start warning
+      _showColdStartMessage();
+      
+      print('🔵 Attempting registration...');
+      final success = await authProvider.register(
+        _usernameController.text.trim(),
+        _passwordController.text,
       );
-    } else if (mounted) {
-      _showError(authProvider.error ?? 'Registration failed');
-    }
-  } catch (e) {
-    print('❌ Registration error: $e');
-    if (mounted) {
-      String errorMsg = e.toString().replaceAll('Exception: ', '');
-      if (errorMsg.contains('502') || errorMsg.contains('503') || errorMsg.contains('waking up')) {
-        _showError('Server is starting up. This may take up to 50 seconds on first request.');
-      } else {
-        _showError('Registration failed: $errorMsg');
+      
+      if (success && mounted) {
+        print('✅ Registration successful!');
+        Navigator.pushReplacementNamed(
+          context,
+          '/lobby',
+          arguments: {
+            'userId': authProvider.currentUser!.id,
+            'username': authProvider.currentUser!.username,
+          },
+        );
+      } else if (mounted) {
+        _showError(authProvider.error ?? 'Registration failed');
+      }
+    } catch (e) {
+      print('❌ Registration error: $e');
+      if (mounted) {
+        String errorMsg = e.toString().replaceAll('Exception: ', '');
+        if (errorMsg.contains('502') || errorMsg.contains('503')) {
+          _showError('Server is starting up. Please wait 30 seconds and try again.');
+        } else {
+          _showError('Registration failed: $errorMsg');
+        }
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isLoading = false);
       }
     }
-  } finally {
-    if (mounted) {
-      setState(() => _isLoading = false);
-    }
   }
-}
 
-void _showColdStartMessage() {
-  ScaffoldMessenger.of(context).showSnackBar(
-    SnackBar(
-      content: Row(
-        children: [
-          SizedBox(
-            width: 20,
-            height: 20,
-            child: CircularProgressIndicator(
-              strokeWidth: 2,
-              valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
-            ),
-          ),
-          SizedBox(width: 12),
-          Expanded(
-            child: Text('First request may take 30-50s while server wakes up...'),
-          ),
-        ],
+  void _showError(String message) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        backgroundColor: Colors.red.shade900,
+        behavior: SnackBarBehavior.floating,
       ),
-      backgroundColor: Color(0xFF1E3A5F),
-      behavior: SnackBarBehavior.floating,
-      duration: Duration(seconds: 5),
-    ),
-  );
-}
+    );
+  }
 
-void _showError(String message) {
-  ScaffoldMessenger.of(context).showSnackBar(
-    SnackBar(
-      content: Text(message),
-      backgroundColor: Color(0xFF8B0000),
-      behavior: SnackBarBehavior.floating,
-      duration: Duration(seconds: 5),
-    ),
-  );
-}
+  void _showColdStartMessage() {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('Waking up the server... This may take 30-60 seconds on first request.'),
+        backgroundColor: Colors.blue.shade900,
+        behavior: SnackBarBehavior.floating,
+        duration: Duration(seconds: 5),
+      ),
+    );
+  }
 }

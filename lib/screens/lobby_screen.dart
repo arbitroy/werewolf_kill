@@ -3,7 +3,6 @@ import 'package:provider/provider.dart';
 import '../providers/room_provider.dart';
 import '../providers/auth_provider.dart';
 import '../core/models/room.dart';
-import 'waiting_room_screen.dart';
 
 class LobbyScreen extends StatefulWidget {
   final String userId;
@@ -543,6 +542,7 @@ class _LobbyScreenState extends State<LobbyScreen> with SingleTickerProviderStat
     final success = await roomProvider.joinRoom(
       room.id,
       authProvider.currentUser!.id,
+      authProvider.currentUser!.username
     );
     
     if (success && mounted) {
