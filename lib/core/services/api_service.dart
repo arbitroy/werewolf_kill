@@ -5,10 +5,14 @@ import '../../config/constants.dart';
 class ApiService {
   final String baseUrl = AppConstants.apiBaseUrl;
   String? _token;
-  String get serverUrl {
-    return baseUrl.replaceAll('/api', '');
+String get serverUrl {
+    // AppConstants.apiBaseUrl is "https://werewolf-backend-jsji.onrender.com/api"
+    // We need "https://werewolf-backend-jsji.onrender.com"
+    if (baseUrl.endsWith('/api')) {
+      return baseUrl.substring(0, baseUrl.length - 4);
+    }
+    return baseUrl;
   }
-
   // Set auth token
   void setToken(String token) {
     _token = token;

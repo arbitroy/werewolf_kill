@@ -54,8 +54,16 @@ class WebSocketService {
     String username,
     String connectionUrl,
   ) {
+    print('═══════════════════════════════════════');
+    print('🔵 WEBSOCKET CONNECTION ATTEMPT');
+    print('═══════════════════════════════════════');
+    print('Room ID: $roomId');
+    print('Player ID: $playerId');
+    print('Username: $username');
+    print('Connection URL (input): $connectionUrl');
+
     if (_client != null && _connectionState == ConnectionState.connected) {
-      print('Already connected');
+      print('⚠️ Already connected, skipping');
       return;
     }
 
@@ -63,49 +71,56 @@ class WebSocketService {
     _currentPlayerId = playerId;
     _currentUsername = username;
 
-    // Remove /api if present in the URL
-    String cleanUrl = connectionUrl;
-    if (cleanUrl.endsWith('/api')) {
-      cleanUrl = cleanUrl.substring(0, cleanUrl.length - 4);
-    }
-
-    // Parse the base URL correctly and add /ws/game endpoint
+    // Build WebSocket URL from base server URL
     String wsUrl;
-    if (cleanUrl.startsWith('http://')) {
-      wsUrl = cleanUrl.replaceFirst('http://', 'ws://') + '/ws/game';
-    } else if (cleanUrl.startsWith('https://')) {
-      wsUrl = cleanUrl.replaceFirst('https://', 'wss://') + '/ws/game';
-    } else if (cleanUrl.startsWith('ws://') || cleanUrl.startsWith('wss://')) {
-      wsUrl = cleanUrl + '/ws/game';
+    if (connectionUrl.startsWith('http://')) {
+      wsUrl = connectionUrl.replaceFirst('http://', 'ws://') + '/ws/game';
+    } else if (connectionUrl.startsWith('https://')) {
+      wsUrl = connectionUrl.replaceFirst('https://', 'wss://') + '/ws/game';
     } else {
-      // Assume https for production
-      wsUrl = 'wss://' + cleanUrl + '/ws/game';
+      wsUrl = 'wss://' + connectionUrl + '/ws/game';
     }
 
-    print('🔵 Attempting WebSocket connection to: $wsUrl');
+    print('🔵 Final WebSocket URL: $wsUrl');
+    print('═══════════════════════════════════════');
 
     _client = StompClient(
       config: StompConfig(
         url: wsUrl,
         onConnect: (frame) {
+          print('✅ WebSocket CONNECTED successfully');
+          print('Frame: ${frame.command}');
           _onConnect(frame, roomId);
-          // Send join after subscriptions are set up
           if (_currentPlayerId != null && _currentUsername != null) {
+            print('📤 Sending join room message...');
             sendJoinRoom(roomId, _currentPlayerId!, _currentUsername!);
           }
         },
-        onDisconnect: (frame) => _onDisconnect(frame),
-        onWebSocketError: (error) => _onWebSocketError(error),
-        onStompError: (frame) => _onStompError(frame),
+        onDisconnect: (frame) {
+          print('❌ WebSocket DISCONNECTED');
+          _onDisconnect(frame);
+        },
+        onWebSocketError: (error) {
+          print('❌❌❌ WebSocket ERROR: $error');
+          _onWebSocketError(error);
+        },
+        onStompError: (frame) {
+          print('❌❌❌ STOMP ERROR: ${frame.body}');
+          _onStompError(frame);
+        },
         reconnectDelay: const Duration(seconds: 5),
         heartbeatIncoming: const Duration(seconds: 10),
         heartbeatOutgoing: const Duration(seconds: 10),
-        onWebSocketDone: () => _onWebSocketDone(),
+        onWebSocketDone: () {
+          print('🔄 WebSocket connection closed');
+          _onWebSocketDone();
+        },
         stompConnectHeaders: {},
         webSocketConnectHeaders: {},
       ),
     );
 
+    print('🔌 Activating WebSocket client...');
     _client?.activate();
   }
 
@@ -117,23 +132,35 @@ class WebSocketService {
   }
 
   void _onConnect(StompFrame frame, String roomId) {
-    print('✅ Connected to WebSocket for room: $roomId');
+    print('═══════════════════════════════════════');
+    print('✅ ON_CONNECT CALLBACK');
+    print('═══════════════════════════════════════');
+    print('Room ID: $roomId');
+
     _updateConnectionState(ConnectionState.connected);
 
-    // Subscribe to room-specific events (player join/leave, game start)
+    // Subscribe to room-specific events
+    print('📡 Subscribing to /topic/room/$roomId');
     _client?.subscribe(
       destination: '/topic/room/$roomId',
-      callback: (frame) => _handleRoomMessage(frame),
+      callback: (frame) {
+        print('📩 RECEIVED MESSAGE on /topic/room/$roomId');
+        _handleRoomMessage(frame);
+      },
     );
 
-    // Subscribe to game-specific events (game updates, phases, votes)
+    // Subscribe to game-specific events
+    print('📡 Subscribing to /topic/game/$roomId');
     _client?.subscribe(
       destination: '/topic/game/$roomId',
-      callback: (frame) => _handleGameMessage(frame),
+      callback: (frame) {
+        print('🎮 RECEIVED MESSAGE on /topic/game/$roomId');
+        _handleGameMessage(frame);
+      },
     );
 
-    // NOTE: sendJoinRoom is now called from the onConnect callback in connect()
-    // to ensure it happens AFTER subscriptions are set up
+    print('✅ Subscriptions complete');
+    print('═══════════════════════════════════════');
   }
 
   void _onDisconnect(StompFrame frame) {
@@ -237,21 +264,34 @@ class WebSocketService {
   // Send messages to server
   void sendJoinRoom(String roomId, String playerId, String username) {
     if (!isConnected) {
-      print('Cannot send message: not connected');
+      print('❌ Cannot send join: NOT CONNECTED');
+      print('Current state: $_connectionState');
       return;
     }
 
-    print('🔵 Sending join room message for player: $username ($playerId)');
+    print('═══════════════════════════════════════');
+    print('📤 SENDING JOIN ROOM MESSAGE');
+    print('═══════════════════════════════════════');
+    print('Destination: /app/room/$roomId/join');
+    print('Player ID: $playerId');
+    print('Username: $username');
+
+    final message = {
+      'roomId': roomId,
+      'playerId': playerId,
+      'username': username,
+      'timestamp': DateTime.now().toIso8601String(),
+    };
+
+    print('Message body: ${jsonEncode(message)}');
 
     _client?.send(
       destination: '/app/room/$roomId/join',
-      body: jsonEncode({
-        'roomId': roomId,
-        'playerId': playerId,
-        'username': username,
-        'timestamp': DateTime.now().toIso8601String(),
-      }),
+      body: jsonEncode(message),
     );
+
+    print('✅ Join message sent');
+    print('═══════════════════════════════════════');
   }
 
   void sendVote(String roomId, String voterId, String targetId) {

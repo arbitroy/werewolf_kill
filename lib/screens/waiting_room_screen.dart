@@ -145,35 +145,55 @@ class _WaitingRoomScreenState extends State<WaitingRoomScreen> {
     Color color;
     IconData icon;
     String tooltip;
+    String statusText;
 
     switch (state) {
       case ConnectionState.connected:
         color = Colors.green;
         icon = Icons.check_circle;
         tooltip = 'Connected';
+        statusText = '✓ Connected';
         break;
       case ConnectionState.connecting:
-      case ConnectionState.reconnecting:
         color = Colors.orange;
         icon = Icons.sync;
         tooltip = 'Connecting...';
+        statusText = '⟳ Connecting';
+        break;
+      case ConnectionState.reconnecting:
+        color = Colors.orange;
+        icon = Icons.sync;
+        tooltip = 'Reconnecting...';
+        statusText = '⟳ Reconnecting';
         break;
       case ConnectionState.error:
         color = Colors.red;
         icon = Icons.error;
         tooltip = 'Connection Error';
+        statusText = '✗ Error';
         break;
       case ConnectionState.disconnected:
       default:
         color = Colors.grey;
         icon = Icons.cloud_off;
         tooltip = 'Disconnected';
+        statusText = '✗ Disconnected';
         break;
     }
 
-    return Tooltip(
-      message: tooltip,
-      child: Icon(icon, color: color, size: 24),
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(icon, color: color, size: 24),
+        Text(
+          statusText,
+          style: TextStyle(
+            fontSize: 10,
+            color: color,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+      ],
     );
   }
 
