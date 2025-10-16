@@ -7,7 +7,7 @@ import '../core/services/websocket_service.dart';
 class GameProvider with ChangeNotifier {
   final ApiService _apiService = ApiService();
   final WebSocketService _wsService = WebSocketService();
-  
+
   GameState? _gameState;
   List<Player> _players = [];
   bool _isLoading = false;
@@ -33,19 +33,38 @@ class GameProvider with ChangeNotifier {
   void _setupWebSocketCallbacks() {
     // Connection state changes
     _wsService.onConnectionStateChanged = (state) {
+      print('🔍 Connection state changed to: $state');
       _wsConnectionState = state;
       notifyListeners();
     };
 
     // Player joined room
     _wsService.onPlayerJoined = (data) {
-      print('Player joined: ${data['username']}');
+      print('🔍 GameProvider: onPlayerJoined called with data: $data');
+      print('🔍 Current players before add: ${_players.length}');
+      print(
+        '🔍 isHost value: ${data['isHost']} (type: ${data['isHost'].runtimeType})',
+      );
+
+      final playerId = data['playerId'] as String;
+
+      // Don't add if player already exists
+      if (_players.any((p) => p.id == playerId)) {
+        print('🔍 Player already in list, skipping');
+        return;
+      }
+
       final newPlayer = Player(
-        id: data['playerId'],
-        username: data['username'],
-        isHost: data['isHost'] ?? false,
+        id: playerId,
+        username: data['username'] as String,
+        isHost: data['isHost'] == true, // Explicit boolean check
+      );
+
+      print(
+        '🔍 Created player: ${newPlayer.username}, isHost: ${newPlayer.isHost}',
       );
       _players.add(newPlayer);
+      print('🔍 Current players after add: ${_players.length}');
       notifyListeners();
     };
 
@@ -83,6 +102,7 @@ class GameProvider with ChangeNotifier {
           username: _myPlayer!.username,
           role: data['role'],
           isAlive: true,
+          isHost: _myPlayer!.isHost,
         );
       }
       notifyListeners();
@@ -105,7 +125,6 @@ class GameProvider with ChangeNotifier {
     // Vote cast
     _wsService.onVoteCast = (data) {
       print('Vote cast: ${data['voterId']} -> ${data['targetId']}');
-      // Update vote counts if needed
       notifyListeners();
     };
 
@@ -120,6 +139,7 @@ class GameProvider with ChangeNotifier {
           username: _players[playerIndex].username,
           role: _players[playerIndex].role,
           isAlive: false,
+          isHost: _players[playerIndex].isHost,
         );
       }
       notifyListeners();
@@ -144,23 +164,37 @@ class GameProvider with ChangeNotifier {
     // Update players if provided
     if (data['players'] != null) {
       _players = (data['players'] as List)
-          .map((p) => Player(
-                id: p['id'],
-                username: p['username'],
-                role: p['role'],
-                isAlive: p['isAlive'] ?? true,
-              ))
+          .map(
+            (p) => Player(
+              id: p['id'],
+              username: p['username'],
+              role: p['role'],
+              isAlive: p['isAlive'] ?? true,
+            ),
+          )
           .toList();
     }
   }
 
   // Connect to game room via WebSocket
-  Future<void> connectToRoom(String roomId, Player myPlayer) async {
-    _currentRoomId = roomId;
-    _myPlayer = myPlayer;
-    _wsService.connect(roomId);
-  }
-
+Future<void> connectToRoom(String roomId, Player myPlayer) async {
+  print('🔵 GameProvider: Connecting to room $roomId');
+  _currentRoomId = roomId;
+  _myPlayer = myPlayer;
+  
+  // Clear existing players and add self
+  _players.clear();
+  _players.add(myPlayer);
+  
+  // Use serverUrl (without /api) for WebSocket
+  final connectionUrl = _apiService.serverUrl;
+  print('🔍 WebSocket server URL: $connectionUrl');
+  
+  // Connect to WebSocket with player information
+  _wsService.connect(roomId, myPlayer.id, myPlayer.username, connectionUrl);
+  
+  notifyListeners();
+}
   // Disconnect from WebSocket
   void disconnectFromRoom() {
     _wsService.disconnect();
@@ -193,10 +227,10 @@ class GameProvider with ChangeNotifier {
     try {
       // Option 1: Send via WebSocket for real-time feedback
       _wsService.sendVote(roomId, voterId, targetId);
-      
+
       // Option 2: Also call REST API for persistence
       // await _apiService.vote(roomId, voterId, targetId);
-      
+
       return true;
     } catch (e) {
       _error = e.toString();
@@ -206,7 +240,12 @@ class GameProvider with ChangeNotifier {
   }
 
   // Night action (WebWolf or Seer)
-  Future<bool> nightAction(String roomId, String actorId, String targetId, String action) async {
+  Future<bool> nightAction(
+    String roomId,
+    String actorId,
+    String targetId,
+    String action,
+  ) async {
     try {
       _wsService.sendNightAction(roomId, actorId, targetId, action);
       return true;

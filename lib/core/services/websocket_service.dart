@@ -11,11 +11,10 @@ enum ConnectionState {
 }
 
 class WebSocketService {
-
   static String get wsUrl {
     // Debug: Print what URL we're actually using
     final url = AppConstants.wsUrl;
-  
+
     // Ensure we're using the correct WebSocket scheme
     if (url.startsWith('https://')) {
       final wsUrl = url.replaceFirst('https://', 'wss://');
@@ -24,14 +23,16 @@ class WebSocketService {
       final wsUrl = url.replaceFirst('http://', 'ws://');
       return wsUrl;
     }
-  
+
     return url;
   }
-  
+
   StompClient? _client;
   ConnectionState _connectionState = ConnectionState.disconnected;
   String? _currentRoomId;
-  
+  String? _currentPlayerId; // ADD THIS
+  String? _currentUsername; // ADD THIS
+
   // Callbacks for different event types
   Function(Map<String, dynamic>)? onPlayerJoined;
   Function(Map<String, dynamic>)? onPlayerLeft;
@@ -47,30 +48,52 @@ class WebSocketService {
   ConnectionState get connectionState => _connectionState;
   bool get isConnected => _connectionState == ConnectionState.connected;
 
-  void connect(String roomId) {
-    if (_client != null && _client!.isActive) {
-      print('Already connected, disconnecting first...');
-      disconnect();
+  void connect(
+    String roomId,
+    String playerId,
+    String username,
+    String connectionUrl,
+  ) {
+    if (_client != null && _connectionState == ConnectionState.connected) {
+      print('Already connected');
+      return;
     }
 
     _currentRoomId = roomId;
-    _updateConnectionState(ConnectionState.connecting);
+    _currentPlayerId = playerId;
+    _currentUsername = username;
 
-    // Get the WebSocket URL with proper scheme
-    final connectionUrl = wsUrl;
-    
-    // For SockJS endpoints, we might need to append /websocket to bypass SockJS
-    // and connect directly via WebSocket
-    final finalUrl = connectionUrl.endsWith('/game') 
-        ? '$connectionUrl/websocket'  // Try direct WebSocket connection
-        : connectionUrl;
-    
-    print('🔵 Attempting WebSocket connection to: $finalUrl');
+    // Remove /api if present in the URL
+    String cleanUrl = connectionUrl;
+    if (cleanUrl.endsWith('/api')) {
+      cleanUrl = cleanUrl.substring(0, cleanUrl.length - 4);
+    }
+
+    // Parse the base URL correctly and add /ws/game endpoint
+    String wsUrl;
+    if (cleanUrl.startsWith('http://')) {
+      wsUrl = cleanUrl.replaceFirst('http://', 'ws://') + '/ws/game';
+    } else if (cleanUrl.startsWith('https://')) {
+      wsUrl = cleanUrl.replaceFirst('https://', 'wss://') + '/ws/game';
+    } else if (cleanUrl.startsWith('ws://') || cleanUrl.startsWith('wss://')) {
+      wsUrl = cleanUrl + '/ws/game';
+    } else {
+      // Assume https for production
+      wsUrl = 'wss://' + cleanUrl + '/ws/game';
+    }
+
+    print('🔵 Attempting WebSocket connection to: $wsUrl');
 
     _client = StompClient(
       config: StompConfig(
-        url: finalUrl,
-        onConnect: (frame) => _onConnect(frame, roomId),
+        url: wsUrl,
+        onConnect: (frame) {
+          _onConnect(frame, roomId);
+          // Send join after subscriptions are set up
+          if (_currentPlayerId != null && _currentUsername != null) {
+            sendJoinRoom(roomId, _currentPlayerId!, _currentUsername!);
+          }
+        },
         onDisconnect: (frame) => _onDisconnect(frame),
         onWebSocketError: (error) => _onWebSocketError(error),
         onStompError: (frame) => _onStompError(frame),
@@ -78,19 +101,14 @@ class WebSocketService {
         heartbeatIncoming: const Duration(seconds: 10),
         heartbeatOutgoing: const Duration(seconds: 10),
         onWebSocketDone: () => _onWebSocketDone(),
-        // Add additional headers if needed for authentication
-        stompConnectHeaders: {
-          'Authorization': 'Bearer ${_getAuthToken()}',  // If you need auth
-        },
-        webSocketConnectHeaders: {
-          'Authorization': 'Bearer ${_getAuthToken()}',  // If you need auth
-        },
+        stompConnectHeaders: {},
+        webSocketConnectHeaders: {},
       ),
     );
 
     _client?.activate();
   }
-  
+
   // Helper method to get auth token if needed
   String? _getAuthToken() {
     // TODO: Implement getting auth token from storage or provider
@@ -114,8 +132,8 @@ class WebSocketService {
       callback: (frame) => _handleGameMessage(frame),
     );
 
-    // Send join notification
-    sendJoinRoom(roomId);
+    // NOTE: sendJoinRoom is now called from the onConnect callback in connect()
+    // to ensure it happens AFTER subscriptions are set up
   }
 
   void _onDisconnect(StompFrame frame) {
@@ -147,16 +165,23 @@ class WebSocketService {
   }
 
   void _handleRoomMessage(StompFrame frame) {
-    if (frame.body == null) return;
+    print('🔍 _handleRoomMessage - frame received');
+    if (frame.body == null) {
+      print('⚠️ Frame body is null!');
+      return;
+    }
 
     try {
+      print('🔍 Frame body: ${frame.body}');
       final data = jsonDecode(frame.body!);
       final type = data['type'] as String?;
 
-      print('📩 Room message: $type');
+      print('📩 Room message type: $type');
+      print('🔍 Full message data: $data');
 
       switch (type) {
         case 'PLAYER_JOINED':
+          print('🔍 Calling onPlayerJoined callback with data: $data');
           onPlayerJoined?.call(data);
           break;
         case 'PLAYER_LEFT':
@@ -169,7 +194,8 @@ class WebSocketService {
           print('Unknown room message type: $type');
       }
     } catch (e) {
-      print('Error parsing room message: $e');
+      print('❌ Error parsing room message: $e');
+      print('❌ Frame body was: ${frame.body}');
       onError?.call('Failed to parse room message: $e');
     }
   }
@@ -209,16 +235,20 @@ class WebSocketService {
   }
 
   // Send messages to server
-  void sendJoinRoom(String roomId) {
+  void sendJoinRoom(String roomId, String playerId, String username) {
     if (!isConnected) {
       print('Cannot send message: not connected');
       return;
     }
 
+    print('🔵 Sending join room message for player: $username ($playerId)');
+
     _client?.send(
-      destination: '/app/game.join',
+      destination: '/app/room/$roomId/join',
       body: jsonEncode({
         'roomId': roomId,
+        'playerId': playerId,
+        'username': username,
         'timestamp': DateTime.now().toIso8601String(),
       }),
     );
@@ -240,7 +270,12 @@ class WebSocketService {
     );
   }
 
-  void sendNightAction(String roomId, String actorId, String targetId, String action) {
+  void sendNightAction(
+    String roomId,
+    String actorId,
+    String targetId,
+    String action,
+  ) {
     if (!isConnected) {
       print('Cannot send night action: not connected');
       return;
@@ -263,10 +298,7 @@ class WebSocketService {
       return;
     }
 
-    _client?.send(
-      destination: destination,
-      body: jsonEncode(message),
-    );
+    _client?.send(destination: destination, body: jsonEncode(message));
   }
 
   void disconnect() {
@@ -275,6 +307,8 @@ class WebSocketService {
       _client?.deactivate();
       _client = null;
       _currentRoomId = null;
+      _currentPlayerId = null;
+      _currentUsername = null;
       _updateConnectionState(ConnectionState.disconnected);
     }
   }
