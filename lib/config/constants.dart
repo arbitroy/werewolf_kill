@@ -2,7 +2,7 @@ class AppConstants {
   // PRODUCTION - Use HTTPS for Render deployment
   static const String baseUrl = 'https://werewolf-backend-jsji.onrender.com';
   static const String apiBaseUrl = '$baseUrl/api';
-  static const String wsUrl = '$baseUrl/ws/game';
+  static const String wsUrl = 'wss://werewolf-backend-jsji.onrender.com/ws/game';
   
   // API Endpoints
   static const String authRegister = '$apiBaseUrl/auth/register';

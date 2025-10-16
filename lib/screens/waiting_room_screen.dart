@@ -48,8 +48,19 @@ class _WaitingRoomScreenState extends State<WaitingRoomScreen> {
 
   @override
   void dispose() {
-    // Disconnect when leaving the room
-    Provider.of<GameProvider>(context, listen: false).disconnectFromRoom();
+    // FIX: Safely disconnect when leaving the room
+    // Use try-catch to handle cases where provider might not be available
+    try {
+      // Check if the widget is still mounted before accessing context
+      if (mounted) {
+        final gameProvider = context.read<GameProvider>();
+        gameProvider.disconnectFromRoom();
+      }
+    } catch (e) {
+      // Provider might already be disposed, which is fine
+      print('Provider already disposed or not available: $e');
+    }
+
     super.dispose();
   }
 
@@ -82,12 +93,16 @@ class _WaitingRoomScreenState extends State<WaitingRoomScreen> {
                   _buildRoomInfo(players.length),
                   SizedBox(height: 32),
                   Expanded(child: _buildPlayerList(players)),
-                  
+
                   // Error message
                   if (gameProvider.error != null)
                     _buildErrorMessage(gameProvider.error!),
-                  
-                  _buildBottomBar(canStart, isConnected, gameProvider.isLoading),
+
+                  _buildBottomBar(
+                    canStart,
+                    isConnected,
+                    gameProvider.isLoading,
+                  ),
                 ],
               ),
             ),
@@ -169,11 +184,7 @@ class _WaitingRoomScreenState extends State<WaitingRoomScreen> {
         padding: EdgeInsets.all(20),
         child: Column(
           children: [
-            Icon(
-              Icons.nightlight_round,
-              size: 60,
-              color: Color(0xFFD4AF37),
-            ),
+            Icon(Icons.nightlight_round, size: 60, color: Color(0xFFD4AF37)),
             SizedBox(height: 16),
             Text(
               'Waiting for players...',
@@ -213,11 +224,7 @@ class _WaitingRoomScreenState extends State<WaitingRoomScreen> {
 
   Widget _buildPlayerList(List<Player> players) {
     if (players.isEmpty) {
-      return Center(
-        child: CircularProgressIndicator(
-          color: Color(0xFFD4AF37),
-        ),
-      );
+      return Center(child: CircularProgressIndicator(color: Color(0xFFD4AF37)));
     }
 
     return ListView.builder(
@@ -284,10 +291,7 @@ class _WaitingRoomScreenState extends State<WaitingRoomScreen> {
                     ],
                   ),
                 ),
-                Icon(
-                  Icons.check_circle,
-                  color: Color(0xFF2E7D32),
-                ),
+                Icon(Icons.check_circle, color: Color(0xFF2E7D32)),
               ],
             ),
           ),
@@ -310,10 +314,7 @@ class _WaitingRoomScreenState extends State<WaitingRoomScreen> {
           Icon(Icons.error, color: Colors.red),
           SizedBox(width: 8),
           Expanded(
-            child: Text(
-              error,
-              style: TextStyle(color: Colors.red),
-            ),
+            child: Text(error, style: TextStyle(color: Colors.red)),
           ),
         ],
       ),
@@ -355,8 +356,9 @@ class _WaitingRoomScreenState extends State<WaitingRoomScreen> {
                         width: 20,
                         child: CircularProgressIndicator(
                           strokeWidth: 2,
-                          valueColor:
-                              AlwaysStoppedAnimation<Color>(Colors.white),
+                          valueColor: AlwaysStoppedAnimation<Color>(
+                            Colors.white,
+                          ),
                         ),
                       )
                     : Text(
@@ -395,9 +397,7 @@ class _WaitingRoomScreenState extends State<WaitingRoomScreen> {
       Navigator.pushReplacementNamed(
         context,
         '/game',
-        arguments: {
-          'roomId': widget.roomId,
-        },
+        arguments: {'roomId': widget.roomId},
       );
     } else if (mounted && gameProvider.error != null) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -414,15 +414,10 @@ class _WaitingRoomScreenState extends State<WaitingRoomScreen> {
       context: context,
       builder: (context) => AlertDialog(
         backgroundColor: Color(0xFF1A0F2E),
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(16),
-        ),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         title: Text(
           'Leave Room?',
-          style: TextStyle(
-            fontFamily: 'Cinzel',
-            color: Color(0xFFC0C0D8),
-          ),
+          style: TextStyle(fontFamily: 'Cinzel', color: Color(0xFFC0C0D8)),
         ),
         content: Text(
           'Are you sure you want to leave?',
@@ -434,19 +429,14 @@ class _WaitingRoomScreenState extends State<WaitingRoomScreen> {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: Text(
-              'Cancel',
-              style: TextStyle(color: Color(0xFFC0C0D8)),
-            ),
+            child: Text('Cancel', style: TextStyle(color: Color(0xFFC0C0D8))),
           ),
           ElevatedButton(
             onPressed: () {
               Navigator.pop(context); // Close dialog
               Navigator.pop(context); // Go back to lobby
             },
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Color(0xFF8B0000),
-            ),
+            style: ElevatedButton.styleFrom(backgroundColor: Color(0xFF8B0000)),
             child: Text('Leave'),
           ),
         ],

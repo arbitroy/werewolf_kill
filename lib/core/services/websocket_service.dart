@@ -11,8 +11,22 @@ enum ConnectionState {
 }
 
 class WebSocketService {
-  // Use constant from AppConstants instead of hardcoding
-  static String get wsUrl => AppConstants.wsUrl;
+
+  static String get wsUrl {
+    // Debug: Print what URL we're actually using
+    final url = AppConstants.wsUrl;
+  
+    // Ensure we're using the correct WebSocket scheme
+    if (url.startsWith('https://')) {
+      final wsUrl = url.replaceFirst('https://', 'wss://');
+      return wsUrl;
+    } else if (url.startsWith('http://')) {
+      final wsUrl = url.replaceFirst('http://', 'ws://');
+      return wsUrl;
+    }
+  
+    return url;
+  }
   
   StompClient? _client;
   ConnectionState _connectionState = ConnectionState.disconnected;
@@ -42,9 +56,20 @@ class WebSocketService {
     _currentRoomId = roomId;
     _updateConnectionState(ConnectionState.connecting);
 
+    // Get the WebSocket URL with proper scheme
+    final connectionUrl = wsUrl;
+    
+    // For SockJS endpoints, we might need to append /websocket to bypass SockJS
+    // and connect directly via WebSocket
+    final finalUrl = connectionUrl.endsWith('/game') 
+        ? '$connectionUrl/websocket'  // Try direct WebSocket connection
+        : connectionUrl;
+    
+    print('🔵 Attempting WebSocket connection to: $finalUrl');
+
     _client = StompClient(
       config: StompConfig(
-        url: wsUrl,
+        url: finalUrl,
         onConnect: (frame) => _onConnect(frame, roomId),
         onDisconnect: (frame) => _onDisconnect(frame),
         onWebSocketError: (error) => _onWebSocketError(error),
@@ -53,10 +78,24 @@ class WebSocketService {
         heartbeatIncoming: const Duration(seconds: 10),
         heartbeatOutgoing: const Duration(seconds: 10),
         onWebSocketDone: () => _onWebSocketDone(),
+        // Add additional headers if needed for authentication
+        stompConnectHeaders: {
+          'Authorization': 'Bearer ${_getAuthToken()}',  // If you need auth
+        },
+        webSocketConnectHeaders: {
+          'Authorization': 'Bearer ${_getAuthToken()}',  // If you need auth
+        },
       ),
     );
 
     _client?.activate();
+  }
+  
+  // Helper method to get auth token if needed
+  String? _getAuthToken() {
+    // TODO: Implement getting auth token from storage or provider
+    // For now, return null if not needed
+    return null;
   }
 
   void _onConnect(StompFrame frame, String roomId) {
@@ -86,6 +125,7 @@ class WebSocketService {
 
   void _onWebSocketError(dynamic error) {
     print('⚠️ WebSocket error: $error');
+    print('⚠️ Error type: ${error.runtimeType}');
     _updateConnectionState(ConnectionState.error);
     onError?.call(error.toString());
   }
