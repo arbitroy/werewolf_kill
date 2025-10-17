@@ -89,8 +89,9 @@ class WebSocketService {
         url: wsUrl,
         onConnect: (frame) {
           print('✅ WebSocket CONNECTED successfully');
-          print('Frame: ${frame.command}');
           _onConnect(frame, roomId);
+
+          // ✅ MOVE THIS INSIDE onConnect - ensures connection is ready
           if (_currentPlayerId != null && _currentUsername != null) {
             print('📤 Sending join room message...');
             sendJoinRoom(roomId, _currentPlayerId!, _currentUsername!);

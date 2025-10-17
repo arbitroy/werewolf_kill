@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/auth_provider.dart';
+import '../core/services/server_health_service.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -9,7 +10,8 @@ class LoginScreen extends StatefulWidget {
   _LoginScreenState createState() => _LoginScreenState();
 }
 
-class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStateMixin {
+class _LoginScreenState extends State<LoginScreen>
+    with SingleTickerProviderStateMixin {
   final _usernameController = TextEditingController();
   final _passwordController = TextEditingController();
   late AnimationController _moonController;
@@ -45,11 +47,7 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
           gradient: LinearGradient(
             begin: Alignment.topCenter,
             end: Alignment.bottomCenter,
-            colors: [
-              Color(0xFF0F0A1E),
-              Color(0xFF2D1B4E),
-              Color(0xFF1A0F2E),
-            ],
+            colors: [Color(0xFF0F0A1E), Color(0xFF2D1B4E), Color(0xFF1A0F2E)],
           ),
         ),
         child: SafeArea(
@@ -88,9 +86,9 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
                       );
                     },
                   ),
-                  
+
                   SizedBox(height: 24),
-                  
+
                   Text(
                     'Moonlight Village',
                     style: TextStyle(
@@ -100,9 +98,9 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
                       color: Color(0xFFD4AF37),
                     ),
                   ),
-                  
+
                   SizedBox(height: 8),
-                  
+
                   Text(
                     'A Game of Deception & Deduction',
                     style: TextStyle(
@@ -111,9 +109,9 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
                       color: Color(0xFFC0C0D8).withOpacity(0.7),
                     ),
                   ),
-                  
+
                   SizedBox(height: 48),
-                  
+
                   // Login Card
                   Card(
                     child: Padding(
@@ -130,7 +128,10 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
                                 fontFamily: 'Lora',
                                 color: Color(0xFFC0C0D8).withOpacity(0.7),
                               ),
-                              prefixIcon: Icon(Icons.person, color: Color(0xFFC0C0D8)),
+                              prefixIcon: Icon(
+                                Icons.person,
+                                color: Color(0xFFC0C0D8),
+                              ),
                               enabledBorder: OutlineInputBorder(
                                 borderRadius: BorderRadius.circular(12),
                                 borderSide: BorderSide(
@@ -146,9 +147,9 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
                               ),
                             ),
                           ),
-                          
+
                           SizedBox(height: 16),
-                          
+
                           // Password field with visibility toggle
                           TextField(
                             controller: _passwordController,
@@ -161,12 +162,15 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
                                 fontFamily: 'Lora',
                                 color: Color(0xFFC0C0D8).withOpacity(0.7),
                               ),
-                              prefixIcon: Icon(Icons.lock, color: Color(0xFFC0C0D8)),
+                              prefixIcon: Icon(
+                                Icons.lock,
+                                color: Color(0xFFC0C0D8),
+                              ),
                               suffixIcon: IconButton(
                                 icon: Icon(
-                                  _obscurePassword 
-                                    ? Icons.visibility_off 
-                                    : Icons.visibility,
+                                  _obscurePassword
+                                      ? Icons.visibility_off
+                                      : Icons.visibility,
                                   color: Color(0xFFC0C0D8),
                                 ),
                                 onPressed: () {
@@ -190,9 +194,9 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
                               ),
                             ),
                           ),
-                          
+
                           SizedBox(height: 24),
-                          
+
                           SizedBox(
                             width: double.infinity,
                             height: 56,
@@ -210,9 +214,9 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
                                   : Text('Enter Village'),
                             ),
                           ),
-                          
+
                           SizedBox(height: 16),
-                          
+
                           TextButton(
                             onPressed: _isLoading ? null : _handleRegister,
                             child: Text(
@@ -241,7 +245,7 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
       _showError('Please enter a username');
       return;
     }
-    
+
     if (_passwordController.text.isEmpty) {
       _showError('Please enter a password');
       return;
@@ -251,16 +255,13 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
 
     try {
       final authProvider = Provider.of<AuthProvider>(context, listen: false);
-      
-      // Show cold start warning
-      _showColdStartMessage();
-      
+
       print('🔵 Attempting login...');
       final success = await authProvider.login(
         _usernameController.text.trim(),
         _passwordController.text,
       );
-      
+
       if (success && mounted) {
         print('✅ Login successful!');
         Navigator.pushReplacementNamed(
@@ -278,8 +279,14 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
       print('❌ Login error: $e');
       if (mounted) {
         String errorMsg = e.toString().replaceAll('Exception: ', '');
-        if (errorMsg.contains('502') || errorMsg.contains('503')) {
-          _showError('Server is starting up. Please wait 30 seconds and try again.');
+
+        // Handle Render cold start errors
+        if (errorMsg.contains('502') ||
+            errorMsg.contains('503') ||
+            errorMsg.contains('504') ||
+            errorMsg.contains('Connection refused') ||
+            errorMsg.contains('Failed host lookup')) {
+          _showColdStartDialog();
         } else {
           _showError('Login failed: $errorMsg');
         }
@@ -291,17 +298,117 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
     }
   }
 
+  void _showColdStartDialog() {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => AlertDialog(
+        backgroundColor: Color(0xFF1A0F2E),
+        title: Row(
+          children: [
+            Icon(Icons.access_time, color: Color(0xFFD4AF37)),
+            SizedBox(width: 8),
+            Text(
+              'Server Waking Up',
+              style: TextStyle(fontFamily: 'Cinzel', color: Color(0xFFC0C0D8)),
+            ),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'The server is starting up (Render free tier).',
+              style: TextStyle(
+                fontFamily: 'Lora',
+                color: Color(0xFFC0C0D8).withOpacity(0.8),
+              ),
+            ),
+            SizedBox(height: 16),
+            Text(
+              'This takes 30-60 seconds on first request.',
+              style: TextStyle(
+                fontFamily: 'Lora',
+                color: Color(0xFFC0C0D8).withOpacity(0.8),
+              ),
+            ),
+            SizedBox(height: 16),
+            LinearProgressIndicator(
+              color: Color(0xFFD4AF37),
+              backgroundColor: Color(0xFF2D1B4E),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () async {
+              Navigator.pop(context);
+              // Try to wake up server
+              setState(() => _isLoading = true);
+              await ServerHealthService.wakeUpServer(
+                onStatusUpdate: (message) {
+                  if (mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text(message),
+                        backgroundColor: Color(0xFF2D1B4E),
+                        duration: Duration(seconds: 2),
+                      ),
+                    );
+                  }
+                },
+              );
+              if (mounted) {
+                setState(() => _isLoading = false);
+                _showInfo('Server ready! Please try logging in again.');
+              }
+            },
+            child: Text(
+              'Wait & Retry',
+              style: TextStyle(color: Color(0xFFD4AF37)),
+            ),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: Text('Cancel', style: TextStyle(color: Color(0xFFC0C0D8))),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showInfo(String message) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        backgroundColor: Color(0xFF2E7D32),
+        behavior: SnackBarBehavior.floating,
+      ),
+    );
+  }
+
+  void _showError(String message) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        backgroundColor: Colors.red.shade900,
+        behavior: SnackBarBehavior.floating,
+      ),
+    );
+  }
+
   void _handleRegister() async {
     if (_usernameController.text.isEmpty) {
       _showError('Please enter a username');
       return;
     }
-    
+
     if (_passwordController.text.isEmpty) {
       _showError('Please enter a password');
       return;
     }
-    
+
     if (_passwordController.text.length < 6) {
       _showError('Password must be at least 6 characters');
       return;
@@ -311,16 +418,16 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
 
     try {
       final authProvider = Provider.of<AuthProvider>(context, listen: false);
-      
+
       // Show cold start warning
       _showColdStartMessage();
-      
+
       print('🔵 Attempting registration...');
       final success = await authProvider.register(
         _usernameController.text.trim(),
         _passwordController.text,
       );
-      
+
       if (success && mounted) {
         print('✅ Registration successful!');
         Navigator.pushReplacementNamed(
@@ -339,7 +446,9 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
       if (mounted) {
         String errorMsg = e.toString().replaceAll('Exception: ', '');
         if (errorMsg.contains('502') || errorMsg.contains('503')) {
-          _showError('Server is starting up. Please wait 30 seconds and try again.');
+          _showError(
+            'Server is starting up. Please wait 30 seconds and try again.',
+          );
         } else {
           _showError('Registration failed: $errorMsg');
         }
@@ -351,20 +460,12 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
     }
   }
 
-  void _showError(String message) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(message),
-        backgroundColor: Colors.red.shade900,
-        behavior: SnackBarBehavior.floating,
-      ),
-    );
-  }
-
   void _showColdStartMessage() {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text('Waking up the server... This may take 30-60 seconds on first request.'),
+        content: Text(
+          'Waking up the server... This may take 30-60 seconds on first request.',
+        ),
         backgroundColor: Colors.blue.shade900,
         behavior: SnackBarBehavior.floating,
         duration: Duration(seconds: 5),

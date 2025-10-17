@@ -6,7 +6,7 @@ import '../config/constants.dart';
 
 class AuthProvider with ChangeNotifier {
   final ApiService _apiService = ApiService();
-  
+
   User? _currentUser;
   String? _token;
   bool _isAuthenticated = false;
@@ -34,6 +34,7 @@ class AuthProvider with ChangeNotifier {
       if (_token != null && userId != null && username != null) {
         _currentUser = User(id: userId, username: username);
         _isAuthenticated = true;
+        _apiService.setToken(_token!);
       }
     } catch (e) {
       print('Error initializing auth: $e');
@@ -52,13 +53,15 @@ class AuthProvider with ChangeNotifier {
 
     try {
       final response = await _apiService.login(username, password);
-      
+
       _token = response['token'];
       _currentUser = User(
         id: response['userId'],
         username: response['username'],
       );
       _isAuthenticated = true;
+
+      _apiService.setToken(_token!);
 
       // Save to local storage
       final prefs = await SharedPreferences.getInstance();
@@ -85,14 +88,14 @@ class AuthProvider with ChangeNotifier {
 
     try {
       final response = await _apiService.register(username, password);
-      
+
       _token = response['token'];
       _currentUser = User(
         id: response['userId'],
         username: response['username'],
       );
       _isAuthenticated = true;
-
+      _apiService.setToken(_token!);
       // Save to local storage
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString(AppConstants.keyAuthToken, _token!);
