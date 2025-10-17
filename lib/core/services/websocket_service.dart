@@ -140,7 +140,7 @@ class WebSocketService {
 
     _updateConnectionState(ConnectionState.connected);
 
-    // Subscribe to room-specific events
+    // Subscribe to room-specific events (broadcasts to all)
     print('📡 Subscribing to /topic/room/$roomId');
     _client?.subscribe(
       destination: '/topic/room/$roomId',
@@ -160,8 +160,34 @@ class WebSocketService {
       },
     );
 
+    // ✅ NEW: Subscribe to user-specific queue for PLAYERS_LIST
+    print('📡 Subscribing to /user/queue/players');
+    _client?.subscribe(
+      destination: '/user/queue/players',
+      callback: (frame) {
+        print('📋 RECEIVED PLAYERS_LIST');
+        _handlePlayersListMessage(frame);
+      },
+    );
+
     print('✅ Subscriptions complete');
     print('═══════════════════════════════════════');
+  }
+
+  // ✅ NEW: Handle PLAYERS_LIST message
+  void _handlePlayersListMessage(StompFrame frame) {
+    if (frame.body == null) return;
+
+    try {
+      final data = json.decode(frame.body!) as Map<String, dynamic>;
+      print('📋 Players list data: $data');
+
+      // Call the game update callback with the full list
+      onGameUpdate?.call(data);
+    } catch (e) {
+      print('Error parsing players list: $e');
+      onError?.call('Failed to parse players list: $e');
+    }
   }
 
   void _onDisconnect(StompFrame frame) {
@@ -236,6 +262,8 @@ class WebSocketService {
       final type = data['type'] as String?;
 
       print('🎮 Game message: $type');
+
+      onGameUpdate?.call(data);
 
       switch (type) {
         case 'GAME_UPDATE':

@@ -47,24 +47,33 @@ class GameProvider with ChangeNotifier {
       );
 
       final playerId = data['playerId'] as String;
+      final username = data['username'] as String;
+      final isHost = data['isHost'] == true;
 
-      // Don't add if player already exists
-      if (_players.any((p) => p.id == playerId)) {
-        print('🔍 Player already in list, skipping');
-        return;
+      // ✅ FIX: Check if player exists and UPDATE them
+      final existingIndex = _players.indexWhere((p) => p.id == playerId);
+
+      if (existingIndex != -1) {
+        // Player exists - UPDATE their data (especially isHost)
+        print('🔄 Player exists, updating: $username, isHost: $isHost');
+        _players[existingIndex] = Player(
+          id: playerId,
+          username: username,
+          isHost: isHost,
+        );
+      } else {
+        // New player - ADD them
+        print('🆕 New player added: $username, isHost: $isHost');
+        _players.add(Player(id: playerId, username: username, isHost: isHost));
       }
 
-      final newPlayer = Player(
-        id: playerId,
-        username: data['username'] as String,
-        isHost: data['isHost'] == true, // Explicit boolean check
-      );
+      // ✅ Update myPlayer if this is me
+      if (_myPlayer?.id == playerId) {
+        print('🔄 Updating myPlayer isHost status: $isHost');
+        _myPlayer = _myPlayer?.copyWith(isHost: isHost);
+      }
 
-      print(
-        '🔍 Created player: ${newPlayer.username}, isHost: ${newPlayer.isHost}',
-      );
-      _players.add(newPlayer);
-      print('🔍 Current players after add: ${_players.length}');
+      print('🔍 Current players after processing: ${_players.length}');
       notifyListeners();
     };
 
@@ -153,6 +162,59 @@ class GameProvider with ChangeNotifier {
     };
   }
 
+  void _handleHostChanged(Map<String, dynamic> data) {
+    print('👑 HOST CHANGED EVENT');
+    final newHostId = data['newHostId'] as String;
+    final newHostUsername = data['newHostUsername'] as String;
+
+    print('New host: $newHostUsername ($newHostId)');
+
+    // Update isHost flag for all players
+    _players = _players.map((player) {
+      return player.copyWith(isHost: player.id == newHostId);
+    }).toList();
+
+    // Update myPlayer if I'm the new host
+    if (_myPlayer?.id == newHostId) {
+      _myPlayer = _myPlayer?.copyWith(isHost: true);
+    }
+
+    notifyListeners();
+  }
+
+  // ✅ Handle full players list (existing code, ensure it's present)
+  void _handlePlayersList(Map<String, dynamic> data) {
+    print('📋 RECEIVED FULL PLAYERS LIST');
+    final playersList = data['players'] as List?;
+
+    if (playersList == null) {
+      print('❌ Players list is null');
+      return;
+    }
+
+    _players = playersList.map((p) {
+      final player = Player.fromJson(p);
+      print(
+        '👤 Player from list: ${player.username}, isHost: ${player.isHost}',
+      );
+      return player;
+    }).toList();
+
+    // ✅ Update myPlayer if found in list
+    final myPlayerInList = _players.firstWhere(
+      (p) => p.id == _myPlayer?.id,
+      orElse: () => _myPlayer!,
+    );
+
+    if (myPlayerInList.id == _myPlayer?.id) {
+      print('🔄 Updating myPlayer from list, isHost: ${myPlayerInList.isHost}');
+      _myPlayer = myPlayerInList;
+    }
+
+    print('✅ Players loaded: ${_players.length}');
+    notifyListeners();
+  }
+
   void _updateGameState(Map<String, dynamic> data) {
     _gameState = GameState(
       roomId: data['roomId'] ?? _currentRoomId,
@@ -160,6 +222,14 @@ class GameProvider with ChangeNotifier {
       dayNumber: data['dayNumber'] ?? _gameState?.dayNumber ?? 0,
       isActive: data['isActive'] ?? true,
     );
+
+    final type = data['type'] as String?;
+
+    if (type == 'HOST_CHANGED') {
+      _handleHostChanged(data);
+    } else if (type == 'PLAYERS_LIST') {
+      _handlePlayersList(data);
+    }
 
     // Update players if provided
     if (data['players'] != null) {
@@ -177,24 +247,25 @@ class GameProvider with ChangeNotifier {
   }
 
   // Connect to game room via WebSocket
-Future<void> connectToRoom(String roomId, Player myPlayer) async {
-  print('🔵 GameProvider: Connecting to room $roomId');
-  _currentRoomId = roomId;
-  _myPlayer = myPlayer;
-  
-  // Clear existing players and add self
-  _players.clear();
-  _players.add(myPlayer);
-  
-  // Use serverUrl (without /api) for WebSocket
-  final connectionUrl = _apiService.serverUrl;
-  print('🔍 WebSocket server URL: $connectionUrl');
-  
-  // Connect to WebSocket with player information
-  _wsService.connect(roomId, myPlayer.id, myPlayer.username, connectionUrl);
-  
-  notifyListeners();
-}
+  Future<void> connectToRoom(String roomId, Player myPlayer) async {
+    print('🔵 GameProvider: Connecting to room $roomId');
+    _currentRoomId = roomId;
+    _myPlayer = myPlayer;
+
+    // ✅ FIX: DON'T pre-add self - wait for PLAYERS_LIST from backend
+    _players.clear();
+    // REMOVED: _players.add(myPlayer);
+
+    // Use serverUrl (without /api) for WebSocket
+    final connectionUrl = _apiService.serverUrl;
+    print('🔍 WebSocket server URL: $connectionUrl');
+
+    // Connect to WebSocket with player information
+    _wsService.connect(roomId, myPlayer.id, myPlayer.username, connectionUrl);
+
+    notifyListeners();
+  }
+
   // Disconnect from WebSocket
   void disconnectFromRoom() {
     _wsService.disconnect();

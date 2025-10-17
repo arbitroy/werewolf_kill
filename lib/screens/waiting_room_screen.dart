@@ -70,7 +70,20 @@ class _WaitingRoomScreenState extends State<WaitingRoomScreen> {
     return Consumer<GameProvider>(
       builder: (context, gameProvider, child) {
         final players = gameProvider.players;
-        final canStart = widget.isHost && players.length >= 3;
+        final authProvider = Provider.of<AuthProvider>(context, listen: false);
+
+        // ✅ FIX: Check if I'm the host from actual player state, not widget param
+        final myPlayer = players.firstWhere(
+          (p) => p.id == authProvider.currentUser?.id,
+          orElse: () => Player(
+            id: authProvider.currentUser?.id ?? '',
+            username: authProvider.currentUser?.username ?? '',
+            isHost: false,
+          ),
+        );
+
+        final isHost = myPlayer.isHost;
+        final canStart = isHost && players.length >= 3;
         final isConnected = gameProvider.isConnected;
 
         return Scaffold(
@@ -99,10 +112,12 @@ class _WaitingRoomScreenState extends State<WaitingRoomScreen> {
                   if (gameProvider.error != null)
                     _buildErrorMessage(gameProvider.error!),
 
+                  // ✅ Pass dynamic isHost, not widget.isHost
                   _buildBottomBar(
                     canStart,
                     isConnected,
                     gameProvider.isLoading,
+                    isHost, // ← Dynamic value from actual state
                   ),
                 ],
               ),
@@ -144,39 +159,32 @@ class _WaitingRoomScreenState extends State<WaitingRoomScreen> {
   Widget _buildConnectionIndicator(ConnectionState state) {
     Color color;
     IconData icon;
-    String tooltip;
     String statusText;
 
     switch (state) {
       case ConnectionState.connected:
         color = Colors.green;
         icon = Icons.check_circle;
-        tooltip = 'Connected';
         statusText = '✓ Connected';
         break;
       case ConnectionState.connecting:
         color = Colors.orange;
         icon = Icons.sync;
-        tooltip = 'Connecting...';
         statusText = '⟳ Connecting';
         break;
       case ConnectionState.reconnecting:
         color = Colors.orange;
         icon = Icons.sync;
-        tooltip = 'Reconnecting...';
         statusText = '⟳ Reconnecting';
         break;
       case ConnectionState.error:
         color = Colors.red;
         icon = Icons.error;
-        tooltip = 'Connection Error';
         statusText = '✗ Error';
         break;
       case ConnectionState.disconnected:
-      default:
         color = Colors.grey;
         icon = Icons.cloud_off;
-        tooltip = 'Disconnected';
         statusText = '✗ Disconnected';
         break;
     }
@@ -248,11 +256,19 @@ class _WaitingRoomScreenState extends State<WaitingRoomScreen> {
       return Center(child: CircularProgressIndicator(color: Color(0xFFD4AF37)));
     }
 
+    // Sort players - host first
+    final sortedPlayers = List<Player>.from(players)
+      ..sort((a, b) {
+        if (a.isHost && !b.isHost) return -1;
+        if (!a.isHost && b.isHost) return 1;
+        return 0;
+      });
+
     return ListView.builder(
       padding: EdgeInsets.symmetric(horizontal: 16),
-      itemCount: players.length,
+      itemCount: sortedPlayers.length,
       itemBuilder: (context, index) {
-        final player = players[index];
+        final player = sortedPlayers[index];
         final authProvider = Provider.of<AuthProvider>(context, listen: false);
         final isMe = player.id == authProvider.currentUser?.id;
 
@@ -263,14 +279,21 @@ class _WaitingRoomScreenState extends State<WaitingRoomScreen> {
             padding: EdgeInsets.all(16),
             child: Row(
               children: [
+                // Avatar with host indicator
                 Container(
                   width: 50,
                   height: 50,
                   decoration: BoxDecoration(
                     shape: BoxShape.circle,
-                    color: Color(0xFF2D1B4E),
+                    color: player.isHost
+                        ? Color(0xFFD4AF37).withOpacity(0.3) // Gold for host
+                        : Color(0xFF2D1B4E),
                     border: Border.all(
-                      color: isMe ? Color(0xFFD4AF37) : Color(0xFF2E7D32),
+                      color: isMe
+                          ? Color(0xFFD4AF37)
+                          : (player.isHost
+                                ? Color(0xFFD4AF37)
+                                : Color(0xFF2E7D32)),
                       width: 2,
                     ),
                   ),
@@ -291,28 +314,57 @@ class _WaitingRoomScreenState extends State<WaitingRoomScreen> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(
-                        player.username + (isMe ? ' (You)' : ''),
-                        style: TextStyle(
-                          fontFamily: 'Cinzel',
-                          fontSize: 16,
-                          fontWeight: FontWeight.bold,
-                          color: Color(0xFFC0C0D8),
-                        ),
+                      // Username with host crown
+                      Row(
+                        children: [
+                          // ✅ ADD CROWN EMOJI FOR HOST
+                          if (player.isHost)
+                            Padding(
+                              padding: EdgeInsets.only(right: 6),
+                              child: Text('👑', style: TextStyle(fontSize: 18)),
+                            ),
+                          Text(
+                            player.username + (isMe ? ' (You)' : ''),
+                            style: TextStyle(
+                              fontFamily: 'Cinzel',
+                              fontSize: 18,
+                              fontWeight: player.isHost
+                                  ? FontWeight.bold
+                                  : FontWeight.normal,
+                              color: Color(0xFFC0C0D8),
+                            ),
+                          ),
+                        ],
                       ),
                       SizedBox(height: 4),
-                      Text(
-                        'Ready',
-                        style: TextStyle(
-                          fontFamily: 'Lora',
-                          fontSize: 14,
-                          color: Color(0xFF2E7D32),
+                      // ✅ ADD HOST LABEL
+                      if (player.isHost)
+                        Container(
+                          padding: EdgeInsets.symmetric(
+                            horizontal: 8,
+                            vertical: 2,
+                          ),
+                          decoration: BoxDecoration(
+                            color: Color(0xFFD4AF37).withOpacity(0.2),
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(
+                              color: Color(0xFFD4AF37),
+                              width: 1,
+                            ),
+                          ),
+                          child: Text(
+                            'HOST',
+                            style: TextStyle(
+                              fontSize: 10,
+                              color: Color(0xFFD4AF37),
+                              fontWeight: FontWeight.bold,
+                              letterSpacing: 1.2,
+                            ),
+                          ),
                         ),
-                      ),
                     ],
                   ),
                 ),
-                Icon(Icons.check_circle, color: Color(0xFF2E7D32)),
               ],
             ),
           ),
@@ -342,31 +394,36 @@ class _WaitingRoomScreenState extends State<WaitingRoomScreen> {
     );
   }
 
-  Widget _buildBottomBar(bool canStart, bool isConnected, bool isLoading) {
+  Widget _buildBottomBar(
+    bool canStart,
+    bool isConnected,
+    bool isLoading,
+    bool isHost, // ✅ NEW parameter
+  ) {
     return Container(
       padding: EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: Color(0xFF1A0F2E),
+        color: Color(0xFF1A0F2E).withOpacity(0.95),
         boxShadow: [
           BoxShadow(
             color: Colors.black.withOpacity(0.3),
             blurRadius: 10,
-            offset: Offset(0, -4),
+            offset: Offset(0, -5),
           ),
         ],
       ),
-      child: widget.isHost
-          ? SizedBox(
-              width: double.infinity,
-              height: 56,
-              child: ElevatedButton(
-                onPressed: (canStart && isConnected && !isLoading)
+      child: SafeArea(
+        child:
+            isHost // ✅ Use parameter, not widget.isHost
+            ? ElevatedButton(
+                onPressed: !isLoading && canStart && isConnected
                     ? _startGame
                     : null,
                 style: ElevatedButton.styleFrom(
                   backgroundColor: canStart
                       ? Color(0xFF2E7D32)
                       : Color(0xFF424242),
+                  padding: EdgeInsets.symmetric(vertical: 16),
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(12),
                   ),
@@ -391,18 +448,18 @@ class _WaitingRoomScreenState extends State<WaitingRoomScreen> {
                           fontWeight: FontWeight.bold,
                         ),
                       ),
-              ),
-            )
-          : Center(
-              child: Text(
-                'Waiting for host to start...',
-                style: TextStyle(
-                  fontFamily: 'Lora',
-                  fontSize: 16,
-                  color: Color(0xFFC0C0D8).withOpacity(0.7),
+              )
+            : Center(
+                child: Text(
+                  'Waiting for host to start...',
+                  style: TextStyle(
+                    fontFamily: 'Lora',
+                    fontSize: 16,
+                    color: Color(0xFFC0C0D8).withOpacity(0.7),
+                  ),
                 ),
               ),
-            ),
+      ),
     );
   }
 
