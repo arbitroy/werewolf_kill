@@ -42,32 +42,32 @@ class GameProvider with ChangeNotifier {
     _wsService.onPlayerJoined = (data) {
       print('🔍 GameProvider: onPlayerJoined called with data: $data');
       print('🔍 Current players before add: ${_players.length}');
-      print(
-        '🔍 isHost value: ${data['isHost']} (type: ${data['isHost'].runtimeType})',
-      );
 
       final playerId = data['playerId'] as String;
       final username = data['username'] as String;
       final isHost = data['isHost'] == true;
 
-      // ✅ FIX: Check if player exists and UPDATE them
+      // Check if player exists and UPDATE them
       final existingIndex = _players.indexWhere((p) => p.id == playerId);
 
       if (existingIndex != -1) {
-        // Player exists - UPDATE their data (especially isHost)
+        // Player exists - UPDATE their data
         print('🔄 Player exists, updating: $username, isHost: $isHost');
-        _players[existingIndex] = Player(
-          id: playerId,
+        _players[existingIndex] = _players[existingIndex].copyWith(
           username: username,
           isHost: isHost,
         );
       } else {
         // New player - ADD them
         print('🆕 New player added: $username, isHost: $isHost');
-        _players.add(Player(id: playerId, username: username, isHost: isHost));
+        _players.add(Player(
+          id: playerId,
+          username: username,
+          isHost: isHost,
+        ));
       }
 
-      // ✅ Update myPlayer if this is me
+      // Update myPlayer if this is me
       if (_myPlayer?.id == playerId) {
         print('🔄 Updating myPlayer isHost status: $isHost');
         _myPlayer = _myPlayer?.copyWith(isHost: isHost);
@@ -79,14 +79,14 @@ class GameProvider with ChangeNotifier {
 
     // Player left room
     _wsService.onPlayerLeft = (data) {
-      print('Player left: ${data['playerId']}');
+      print('👋 Player left: ${data['playerId']}');
       _players.removeWhere((p) => p.id == data['playerId']);
       notifyListeners();
     };
 
     // Game started
     _wsService.onGameStarted = (data) {
-      print('Game started!');
+      print('🎮 Game started!');
       _gameState = GameState(
         roomId: data['roomId'],
         phase: 'STARTING',
@@ -97,29 +97,23 @@ class GameProvider with ChangeNotifier {
 
     // Game update
     _wsService.onGameUpdate = (data) {
-      print('Game update received');
+      print('🔄 Game update received');
       _updateGameState(data);
       notifyListeners();
     };
 
     // Role assigned
     _wsService.onRoleAssigned = (data) {
-      print('Role assigned: ${data['role']}');
+      print('🎭 Role assigned: ${data['role']}');
       if (_myPlayer != null && data['playerId'] == _myPlayer!.id) {
-        _myPlayer = Player(
-          id: _myPlayer!.id,
-          username: _myPlayer!.username,
-          role: data['role'],
-          isAlive: true,
-          isHost: _myPlayer!.isHost,
-        );
+        _myPlayer = _myPlayer!.copyWith(role: data['role']);
       }
       notifyListeners();
     };
 
     // Phase change
     _wsService.onPhaseChange = (data) {
-      print('Phase changed to: ${data['phase']}');
+      print('🌓 Phase changed to: ${data['phase']}');
       if (_gameState != null) {
         _gameState = GameState(
           roomId: _gameState!.roomId,
@@ -133,30 +127,24 @@ class GameProvider with ChangeNotifier {
 
     // Vote cast
     _wsService.onVoteCast = (data) {
-      print('Vote cast: ${data['voterId']} -> ${data['targetId']}');
+      print('🗳️ Vote cast: ${data['voterId']} -> ${data['targetId']}');
       notifyListeners();
     };
 
     // Player died
     _wsService.onPlayerDied = (data) {
-      print('Player died: ${data['playerId']}');
+      print('☠️ Player died: ${data['playerId']}');
       final playerId = data['playerId'];
       final playerIndex = _players.indexWhere((p) => p.id == playerId);
       if (playerIndex != -1) {
-        _players[playerIndex] = Player(
-          id: _players[playerIndex].id,
-          username: _players[playerIndex].username,
-          role: _players[playerIndex].role,
-          isAlive: false,
-          isHost: _players[playerIndex].isHost,
-        );
+        _players[playerIndex] = _players[playerIndex].copyWith(isAlive: false);
       }
       notifyListeners();
     };
 
     // Errors
     _wsService.onError = (errorMsg) {
-      print('WebSocket error: $errorMsg');
+      print('❌ WebSocket error: $errorMsg');
       _error = errorMsg;
       notifyListeners();
     };
@@ -182,7 +170,6 @@ class GameProvider with ChangeNotifier {
     notifyListeners();
   }
 
-  // ✅ Handle full players list (existing code, ensure it's present)
   void _handlePlayersList(Map<String, dynamic> data) {
     print('📋 RECEIVED FULL PLAYERS LIST');
     final playersList = data['players'] as List?;
@@ -194,13 +181,11 @@ class GameProvider with ChangeNotifier {
 
     _players = playersList.map((p) {
       final player = Player.fromJson(p);
-      print(
-        '👤 Player from list: ${player.username}, isHost: ${player.isHost}',
-      );
+      print('👤 Player from list: ${player.username}, isHost: ${player.isHost}');
       return player;
     }).toList();
 
-    // ✅ Update myPlayer if found in list
+    // Update myPlayer if found in list
     final myPlayerInList = _players.firstWhere(
       (p) => p.id == _myPlayer?.id,
       orElse: () => _myPlayer!,
@@ -234,27 +219,24 @@ class GameProvider with ChangeNotifier {
     // Update players if provided
     if (data['players'] != null) {
       _players = (data['players'] as List)
-          .map(
-            (p) => Player(
-              id: p['id'],
-              username: p['username'],
-              role: p['role'],
-              isAlive: p['isAlive'] ?? true,
-            ),
-          )
+          .map((p) => Player(
+                id: p['id'],
+                username: p['username'],
+                role: p['role'],
+                isAlive: p['isAlive'] ?? true,
+              ))
           .toList();
     }
   }
 
-  // Connect to game room via WebSocket
+  // ✅ Connect to game room via WebSocket
   Future<void> connectToRoom(String roomId, Player myPlayer) async {
     print('🔵 GameProvider: Connecting to room $roomId');
     _currentRoomId = roomId;
     _myPlayer = myPlayer;
 
-    // ✅ FIX: DON'T pre-add self - wait for PLAYERS_LIST from backend
+    // Clear players - wait for PLAYERS_LIST from backend
     _players.clear();
-    // REMOVED: _players.add(myPlayer);
 
     // Use serverUrl (without /api) for WebSocket
     final connectionUrl = _apiService.serverUrl;
@@ -266,12 +248,15 @@ class GameProvider with ChangeNotifier {
     notifyListeners();
   }
 
-  // Disconnect from WebSocket
+  // ✅ Disconnect from WebSocket
   void disconnectFromRoom() {
+    print('🔌 Disconnecting from room');
     _wsService.disconnect();
     _currentRoomId = null;
     _players.clear();
     _gameState = null;
+    _myPlayer = null;
+    notifyListeners();
   }
 
   // Start game (REST API call, server will broadcast via WebSocket)
@@ -281,12 +266,15 @@ class GameProvider with ChangeNotifier {
     notifyListeners();
 
     try {
+      print('🔵 Starting game: $roomId');
       await _apiService.startGame(roomId);
+      print('✅ Game start request sent');
       _isLoading = false;
       notifyListeners();
       return true;
     } catch (e) {
-      _error = e.toString();
+      print('❌ Start game error: $e');
+      _error = e.toString().replaceAll('Exception: ', '');
       _isLoading = false;
       notifyListeners();
       return false;
@@ -296,6 +284,7 @@ class GameProvider with ChangeNotifier {
   // Vote (can use WebSocket or REST API)
   Future<bool> vote(String roomId, String voterId, String targetId) async {
     try {
+      print('🔵 Casting vote: $voterId -> $targetId');
       // Option 1: Send via WebSocket for real-time feedback
       _wsService.sendVote(roomId, voterId, targetId);
 
@@ -304,13 +293,14 @@ class GameProvider with ChangeNotifier {
 
       return true;
     } catch (e) {
-      _error = e.toString();
+      print('❌ Vote error: $e');
+      _error = e.toString().replaceAll('Exception: ', '');
       notifyListeners();
       return false;
     }
   }
 
-  // Night action (WebWolf or Seer)
+  // Night action (Werewolf or Seer)
   Future<bool> nightAction(
     String roomId,
     String actorId,
@@ -318,17 +308,34 @@ class GameProvider with ChangeNotifier {
     String action,
   ) async {
     try {
+      print('🔵 Night action: $action on $targetId');
       _wsService.sendNightAction(roomId, actorId, targetId, action);
       return true;
     } catch (e) {
-      _error = e.toString();
+      print('❌ Night action error: $e');
+      _error = e.toString().replaceAll('Exception: ', '');
       notifyListeners();
       return false;
     }
   }
 
+  // Set token
+  void setToken(String token) {
+    _apiService.setToken(token);
+  }
+
   // Clear error
   void clearError() {
+    _error = null;
+    notifyListeners();
+  }
+
+  // Reset all state
+  void reset() {
+    _gameState = null;
+    _players.clear();
+    _currentRoomId = null;
+    _myPlayer = null;
     _error = null;
     notifyListeners();
   }

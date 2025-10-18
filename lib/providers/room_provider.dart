@@ -9,6 +9,8 @@ class RoomProvider with ChangeNotifier {
   List<Room> _rooms = [];
   Room? _currentRoom;
   List<Player> _roomPlayers = [];
+  String? _hostUsername;
+  String? _currentPhase;
   bool _isLoading = false;
   String? _error;
 
@@ -16,15 +18,26 @@ class RoomProvider with ChangeNotifier {
   List<Room> get rooms => _rooms;
   Room? get currentRoom => _currentRoom;
   List<Player> get roomPlayers => _roomPlayers;
+  String? get hostUsername => _hostUsername;
+  String? get currentPhase => _currentPhase;
   bool get isLoading => _isLoading;
   String? get error => _error;
+
+  Player? get currentHost => _roomPlayers.firstWhere(
+    (p) => p.isHost,
+    orElse: () => Player(id: '', username: '', isHost: false),
+  );
+
+  bool isPlayerHost(String playerId) {
+    return _roomPlayers.any((p) => p.id == playerId && p.isHost);
+  }
 
   // Set token from AuthProvider
   void setToken(String token) {
     _apiService.setToken(token);
   }
 
-  // Load available rooms
+  // Load available rooms from REST API
   Future<void> loadRooms() async {
     _isLoading = true;
     _error = null;
@@ -46,7 +59,7 @@ class RoomProvider with ChangeNotifier {
     }
   }
 
-  // Create room with optional max players
+  // Create room via REST API
   Future<Room?> createRoom(String roomName, String hostId, {int maxPlayers = 8}) async {
     _isLoading = true;
     _error = null;
@@ -65,16 +78,6 @@ class RoomProvider with ChangeNotifier {
       _currentRoom = room;
       _rooms.add(room);
       
-      // Add host to room players
-      _roomPlayers = [
-        Player(
-          id: hostId,
-          username: 'Host', // This should come from auth provider
-          isAlive: true,
-          isHost: true,
-        ),
-      ];
-      
       _isLoading = false;
       notifyListeners();
       return room;
@@ -87,7 +90,7 @@ class RoomProvider with ChangeNotifier {
     }
   }
 
-  // Join room
+  // ✅ FIXED: Join room (REST API - maintains backward compatibility)
   Future<bool> joinRoom(String roomId, String playerId, String playerName) async {
     _isLoading = true;
     _error = null;
@@ -96,9 +99,9 @@ class RoomProvider with ChangeNotifier {
     try {
       print('🔵 Joining room: $roomId as player: $playerId');
       await _apiService.joinRoom(roomId, playerId);
-      print('✅ Joined room successfully');
+      print('✅ Joined room successfully via REST API');
       
-      // Update current room
+      // Update current room (will be overwritten by WebSocket updates)
       _currentRoom = _rooms.firstWhere(
         (room) => room.id == roomId,
         orElse: () => Room(
@@ -108,18 +111,6 @@ class RoomProvider with ChangeNotifier {
           currentPlayers: 1,
         ),
       );
-      
-      // Increment player count locally
-      if (_currentRoom != null) {
-        _currentRoom = Room(
-          id: _currentRoom!.id,
-          name: _currentRoom!.name,
-          hostId: _currentRoom!.hostId,
-          maxPlayers: _currentRoom!.maxPlayers,
-          currentPlayers: _currentRoom!.currentPlayers + 1,
-          status: _currentRoom!.status,
-        );
-      }
       
       _isLoading = false;
       notifyListeners();
@@ -133,7 +124,7 @@ class RoomProvider with ChangeNotifier {
     }
   }
 
-  // Leave room
+  // ✅ FIXED: Leave room (maintains backward compatibility)
   Future<bool> leaveRoom(String roomId, String playerId) async {
     _isLoading = true;
     _error = null;
@@ -142,7 +133,7 @@ class RoomProvider with ChangeNotifier {
     try {
       print('🔵 Leaving room: $roomId as player: $playerId');
       await _apiService.leaveRoom(roomId, playerId);
-      print('✅ Left room successfully');
+      print('✅ Left room successfully via REST API');
       
       // Clear current room if it's the one we left
       if (_currentRoom?.id == roomId) {
@@ -176,7 +167,7 @@ class RoomProvider with ChangeNotifier {
     }
   }
 
-  // Get room details
+  // ✅ FIXED: Get room details (maintains backward compatibility)
   Future<Room?> getRoomDetails(String roomId) async {
     _isLoading = true;
     _error = null;
@@ -202,7 +193,7 @@ class RoomProvider with ChangeNotifier {
     }
   }
 
-  // Get room players
+  // ✅ FIXED: Get room players (maintains backward compatibility)
   Future<List<Player>> getRoomPlayers(String roomId) async {
     _isLoading = true;
     _error = null;
@@ -225,6 +216,134 @@ class RoomProvider with ChangeNotifier {
       notifyListeners();
       return [];
     }
+  }
+
+  // ✅ NEW: Handle unified room state updates from WebSocket
+  void handleRoomStateUpdate(Map<String, dynamic> data) {
+    print('📥 Handling room state update');
+    
+    try {
+      final roomId = data['roomId'] as String;
+      final roomName = data['roomName'] as String;
+      final playerCount = data['playerCount'] as int;
+      final hostUsername = data['hostUsername'] as String?;
+      final currentPhase = data['currentPhase'] as String?;
+      
+      // Update current room metadata
+      if (_currentRoom?.id == roomId || _currentRoom == null) {
+        _currentRoom = Room(
+          id: roomId,
+          name: roomName,
+          hostId: '', // Not used anymore
+          maxPlayers: _currentRoom?.maxPlayers ?? 8,
+          currentPlayers: playerCount,
+          status: currentPhase ?? 'WAITING',
+        );
+      }
+      
+      _hostUsername = hostUsername;
+      _currentPhase = currentPhase;
+      
+      // Update player list from the state update
+      final playersData = data['players'] as List<dynamic>?;
+      if (playersData != null) {
+        _roomPlayers = playersData.map((p) {
+          return Player(
+            id: p['playerId'] as String,
+            username: p['username'] as String,
+            isHost: p['isHost'] as bool? ?? false,
+            isAlive: p['status'] == 'ALIVE',
+            role: p['role'] as String?,
+          );
+        }).toList();
+        
+        print('✅ Updated ${_roomPlayers.length} players');
+      }
+      
+      notifyListeners();
+    } catch (e) {
+      print('❌ Error handling room state update: $e');
+      _error = 'Failed to update room state';
+      notifyListeners();
+    }
+  }
+
+  // Legacy callback support (for backward compatibility)
+  void handlePlayerJoined(Map<String, dynamic> data) {
+    print('👋 Player joined: ${data['username']}');
+    
+    final playerId = data['playerId'] as String;
+    final username = data['username'] as String;
+    final isHost = data['isHost'] as bool? ?? false;
+    
+    // Check if player already exists
+    final existingIndex = _roomPlayers.indexWhere((p) => p.id == playerId);
+    
+    if (existingIndex != -1) {
+      // ✅ FIXED: Use copyWith instead of mutating
+      _roomPlayers[existingIndex] = _roomPlayers[existingIndex].copyWith(
+        username: username,
+        isHost: isHost,
+      );
+    } else {
+      // Add new player
+      _roomPlayers.add(Player(
+        id: playerId,
+        username: username,
+        isHost: isHost,
+        isAlive: true,
+      ));
+    }
+    
+    // Update current room player count
+    if (_currentRoom != null) {
+      _currentRoom = Room(
+        id: _currentRoom!.id,
+        name: _currentRoom!.name,
+        hostId: _currentRoom!.hostId,
+        maxPlayers: _currentRoom!.maxPlayers,
+        currentPlayers: _roomPlayers.length,
+        status: _currentRoom!.status,
+      );
+    }
+    
+    notifyListeners();
+  }
+
+  void handlePlayerLeft(Map<String, dynamic> data) {
+    print('👋 Player left: ${data['playerId']}');
+    
+    final playerId = data['playerId'] as String;
+    _roomPlayers.removeWhere((p) => p.id == playerId);
+    
+    // Update current room player count
+    if (_currentRoom != null) {
+      _currentRoom = Room(
+        id: _currentRoom!.id,
+        name: _currentRoom!.name,
+        hostId: _currentRoom!.hostId,
+        maxPlayers: _currentRoom!.maxPlayers,
+        currentPlayers: _roomPlayers.length,
+        status: _currentRoom!.status,
+      );
+    }
+    
+    notifyListeners();
+  }
+
+  void handleHostChanged(Map<String, dynamic> data) {
+    print('👑 Host changed to: ${data['newHostUsername']}');
+    
+    final newHostId = data['newHostId'] as String;
+    final newHostUsername = data['newHostUsername'] as String;
+    
+    // ✅ FIXED: Create new Player instances instead of mutating
+    _roomPlayers = _roomPlayers.map((player) {
+      return player.copyWith(isHost: player.id == newHostId);
+    }).toList();
+    
+    _hostUsername = newHostUsername;
+    notifyListeners();
   }
 
   // Update room player count (called from WebSocket events)
@@ -305,10 +424,12 @@ class RoomProvider with ChangeNotifier {
     notifyListeners();
   }
 
-  // Clear current room
+  // Clear current room and players
   void clearCurrentRoom() {
     _currentRoom = null;
     _roomPlayers = [];
+    _hostUsername = null;
+    _currentPhase = null;
     notifyListeners();
   }
 

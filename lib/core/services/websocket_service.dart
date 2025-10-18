@@ -1,6 +1,6 @@
+import 'dart:async';
 import 'dart:convert';
 import 'package:stomp_dart_client/stomp_dart_client.dart';
-import '../../config/constants.dart';
 
 enum ConnectionState {
   disconnected,
@@ -11,31 +11,18 @@ enum ConnectionState {
 }
 
 class WebSocketService {
-  static String get wsUrl {
-    // Debug: Print what URL we're actually using
-    final url = AppConstants.wsUrl;
-
-    // Ensure we're using the correct WebSocket scheme
-    if (url.startsWith('https://')) {
-      final wsUrl = url.replaceFirst('https://', 'wss://');
-      return wsUrl;
-    } else if (url.startsWith('http://')) {
-      final wsUrl = url.replaceFirst('http://', 'ws://');
-      return wsUrl;
-    }
-
-    return url;
-  }
-
   StompClient? _client;
   ConnectionState _connectionState = ConnectionState.disconnected;
   String? _currentRoomId;
-  String? _currentPlayerId; // ADD THIS
-  String? _currentUsername; // ADD THIS
+  String? _currentPlayerId;
+  String? _currentUsername;
+  Timer? _heartbeatTimer;
 
   // Callbacks for different event types
+  Function(Map<String, dynamic>)? onRoomStateUpdate;  // ✅ New unified callback
   Function(Map<String, dynamic>)? onPlayerJoined;
   Function(Map<String, dynamic>)? onPlayerLeft;
+  Function(Map<String, dynamic>)? onHostChanged;
   Function(Map<String, dynamic>)? onGameStarted;
   Function(Map<String, dynamic>)? onGameUpdate;
   Function(Map<String, dynamic>)? onRoleAssigned;
@@ -60,7 +47,7 @@ class WebSocketService {
     print('Room ID: $roomId');
     print('Player ID: $playerId');
     print('Username: $username');
-    print('Connection URL (input): $connectionUrl');
+    print('Connection URL: $connectionUrl');
 
     if (_client != null && _connectionState == ConnectionState.connected) {
       print('⚠️ Already connected, skipping');
@@ -71,7 +58,7 @@ class WebSocketService {
     _currentPlayerId = playerId;
     _currentUsername = username;
 
-    // Build WebSocket URL from base server URL
+    // Build WebSocket URL
     String wsUrl;
     if (connectionUrl.startsWith('http://')) {
       wsUrl = connectionUrl.replaceFirst('http://', 'ws://') + '/ws/game';
@@ -81,72 +68,39 @@ class WebSocketService {
       wsUrl = 'wss://' + connectionUrl + '/ws/game';
     }
 
-    print('🔵 Final WebSocket URL: $wsUrl');
+    print('🔵 WebSocket URL: $wsUrl');
     print('═══════════════════════════════════════');
 
     _client = StompClient(
       config: StompConfig(
         url: wsUrl,
-        onConnect: (frame) {
-          print('✅ WebSocket CONNECTED successfully');
-          _onConnect(frame, roomId);
-
-          // ✅ MOVE THIS INSIDE onConnect - ensures connection is ready
-          if (_currentPlayerId != null && _currentUsername != null) {
-            print('📤 Sending join room message...');
-            sendJoinRoom(roomId, _currentPlayerId!, _currentUsername!);
-          }
-        },
-        onDisconnect: (frame) {
-          print('❌ WebSocket DISCONNECTED');
-          _onDisconnect(frame);
-        },
-        onWebSocketError: (error) {
-          print('❌❌❌ WebSocket ERROR: $error');
-          _onWebSocketError(error);
-        },
-        onStompError: (frame) {
-          print('❌❌❌ STOMP ERROR: ${frame.body}');
-          _onStompError(frame);
-        },
+        onConnect: (frame) => _onConnect(frame, roomId),
+        onDisconnect: (frame) => _onDisconnect(),
+        onWebSocketError: (error) => _onWebSocketError(error),
+        onStompError: (frame) => _onStompError(frame),
         reconnectDelay: const Duration(seconds: 5),
         heartbeatIncoming: const Duration(seconds: 10),
         heartbeatOutgoing: const Duration(seconds: 10),
-        onWebSocketDone: () {
-          print('🔄 WebSocket connection closed');
-          _onWebSocketDone();
-        },
-        stompConnectHeaders: {},
-        webSocketConnectHeaders: {},
+        onWebSocketDone: () => _onWebSocketDone(),
       ),
     );
 
-    print('🔌 Activating WebSocket client...');
+    _updateConnectionState(ConnectionState.connecting);
     _client?.activate();
   }
 
-  // Helper method to get auth token if needed
-  String? _getAuthToken() {
-    // TODO: Implement getting auth token from storage or provider
-    // For now, return null if not needed
-    return null;
-  }
-
   void _onConnect(StompFrame frame, String roomId) {
-    print('═══════════════════════════════════════');
-    print('✅ ON_CONNECT CALLBACK');
-    print('═══════════════════════════════════════');
-    print('Room ID: $roomId');
-
+    print('✅ WebSocket CONNECTED');
     _updateConnectionState(ConnectionState.connected);
 
-    // Subscribe to room-specific events (broadcasts to all)
+    // Subscribe to room updates (NEW unified topic)
     print('📡 Subscribing to /topic/room/$roomId');
     _client?.subscribe(
       destination: '/topic/room/$roomId',
       callback: (frame) {
-        print('📩 RECEIVED MESSAGE on /topic/room/$roomId');
-        _handleRoomMessage(frame);
+        if (frame.body != null) {
+          _handleRoomMessage(frame);
+        }
       },
     );
 
@@ -155,61 +109,53 @@ class WebSocketService {
     _client?.subscribe(
       destination: '/topic/game/$roomId',
       callback: (frame) {
-        print('🎮 RECEIVED MESSAGE on /topic/game/$roomId');
-        _handleGameMessage(frame);
+        if (frame.body != null) {
+          _handleGameMessage(frame);
+        }
       },
     );
 
-    // ✅ NEW: Subscribe to user-specific queue for PLAYERS_LIST
-    print('📡 Subscribing to /user/queue/players');
+    // Subscribe to error queue
     _client?.subscribe(
-      destination: '/user/queue/players',
+      destination: '/user/queue/errors',
       callback: (frame) {
-        print('📋 RECEIVED PLAYERS_LIST');
-        _handlePlayersListMessage(frame);
+        if (frame.body != null) {
+          _handleErrorMessage(frame);
+        }
       },
     );
 
     print('✅ Subscriptions complete');
-    print('═══════════════════════════════════════');
-  }
 
-  // ✅ NEW: Handle PLAYERS_LIST message
-  void _handlePlayersListMessage(StompFrame frame) {
-    if (frame.body == null) return;
-
-    try {
-      final data = json.decode(frame.body!) as Map<String, dynamic>;
-      print('📋 Players list data: $data');
-
-      // Call the game update callback with the full list
-      onGameUpdate?.call(data);
-    } catch (e) {
-      print('Error parsing players list: $e');
-      onError?.call('Failed to parse players list: $e');
+    // Send join message
+    if (_currentPlayerId != null && _currentUsername != null) {
+      sendJoinRoom(roomId, _currentPlayerId!, _currentUsername!);
     }
+
+    // Start heartbeat
+    _startHeartbeat();
   }
 
-  void _onDisconnect(StompFrame frame) {
-    print('❌ Disconnected from WebSocket');
+  void _onDisconnect() {
+    print('🔌 WebSocket DISCONNECTED');
     _updateConnectionState(ConnectionState.disconnected);
+    _stopHeartbeat();
   }
 
   void _onWebSocketError(dynamic error) {
-    print('⚠️ WebSocket error: $error');
-    print('⚠️ Error type: ${error.runtimeType}');
+    print('❌ WebSocket error: $error');
     _updateConnectionState(ConnectionState.error);
     onError?.call(error.toString());
   }
 
   void _onStompError(StompFrame frame) {
-    print('⚠️ STOMP error: ${frame.body}');
+    print('❌ STOMP error: ${frame.body}');
     _updateConnectionState(ConnectionState.error);
     onError?.call(frame.body ?? 'Unknown STOMP error');
   }
 
   void _onWebSocketDone() {
-    print('🔄 WebSocket connection closed, attempting reconnect...');
+    print('🔄 WebSocket connection closed, reconnecting...');
     _updateConnectionState(ConnectionState.reconnecting);
   }
 
@@ -219,51 +165,48 @@ class WebSocketService {
   }
 
   void _handleRoomMessage(StompFrame frame) {
-    print('🔍 _handleRoomMessage - frame received');
-    if (frame.body == null) {
-      print('⚠️ Frame body is null!');
-      return;
-    }
-
     try {
-      print('🔍 Frame body: ${frame.body}');
       final data = jsonDecode(frame.body!);
       final type = data['type'] as String?;
 
       print('📩 Room message type: $type');
-      print('🔍 Full message data: $data');
 
       switch (type) {
+        case 'ROOM_STATE_UPDATE':  // ✅ NEW: Unified room state
+          print('📊 Room state update received');
+          onRoomStateUpdate?.call(data);
+          break;
         case 'PLAYER_JOINED':
-          print('🔍 Calling onPlayerJoined callback with data: $data');
+          print('👋 Player joined');
           onPlayerJoined?.call(data);
           break;
         case 'PLAYER_LEFT':
+          print('👋 Player left');
           onPlayerLeft?.call(data);
           break;
+        case 'HOST_CHANGED':
+          print('👑 Host changed');
+          onHostChanged?.call(data);
+          break;
         case 'GAME_STARTED':
+          print('🎮 Game started');
           onGameStarted?.call(data);
           break;
         default:
-          print('Unknown room message type: $type');
+          print('⚠️ Unknown room message type: $type');
       }
     } catch (e) {
       print('❌ Error parsing room message: $e');
-      print('❌ Frame body was: ${frame.body}');
       onError?.call('Failed to parse room message: $e');
     }
   }
 
   void _handleGameMessage(StompFrame frame) {
-    if (frame.body == null) return;
-
     try {
       final data = jsonDecode(frame.body!);
       final type = data['type'] as String?;
 
-      print('🎮 Game message: $type');
-
-      onGameUpdate?.call(data);
+      print('🎮 Game message type: $type');
 
       switch (type) {
         case 'GAME_UPDATE':
@@ -282,50 +225,73 @@ class WebSocketService {
           onPlayerDied?.call(data);
           break;
         default:
-          print('Unknown game message type: $type');
+          print('⚠️ Unknown game message type: $type');
       }
     } catch (e) {
-      print('Error parsing game message: $e');
+      print('❌ Error parsing game message: $e');
       onError?.call('Failed to parse game message: $e');
     }
   }
 
-  // Send messages to server
+  void _handleErrorMessage(StompFrame frame) {
+    try {
+      final data = jsonDecode(frame.body!);
+      final message = data['message'] as String?;
+      print('❌ Server error: $message');
+      onError?.call(message ?? 'Unknown error');
+    } catch (e) {
+      print('❌ Error parsing error message: $e');
+    }
+  }
+
+  // Send join room message
   void sendJoinRoom(String roomId, String playerId, String username) {
     if (!isConnected) {
-      print('❌ Cannot send join: NOT CONNECTED');
-      print('Current state: $_connectionState');
+      print('⚠️ Cannot send join: not connected');
       return;
     }
 
-    print('═══════════════════════════════════════');
-    print('📤 SENDING JOIN ROOM MESSAGE');
-    print('═══════════════════════════════════════');
-    print('Destination: /app/room/$roomId/join');
-    print('Player ID: $playerId');
-    print('Username: $username');
-
-    final message = {
-      'roomId': roomId,
-      'playerId': playerId,
-      'username': username,
-      'timestamp': DateTime.now().toIso8601String(),
-    };
-
-    print('Message body: ${jsonEncode(message)}');
-
+    print('📤 Sending join room message');
     _client?.send(
       destination: '/app/room/$roomId/join',
-      body: jsonEncode(message),
+      body: jsonEncode({
+        'playerId': playerId,
+        'username': username,
+      }),
     );
-
-    print('✅ Join message sent');
-    print('═══════════════════════════════════════');
   }
 
+  // Send leave room message
+  void sendLeaveRoom(String roomId) {
+    if (!isConnected) {
+      print('⚠️ Cannot send leave: not connected');
+      return;
+    }
+
+    print('📤 Sending leave room message');
+    _client?.send(
+      destination: '/app/room/$roomId/leave',
+    );
+  }
+
+  // Start game
+  void sendStartGame(String roomId) {
+    if (!isConnected) {
+      print('⚠️ Cannot send start game: not connected');
+      return;
+    }
+
+    print('📤 Sending start game message');
+    _client?.send(
+      destination: '/app/game.start',
+      body: jsonEncode({'roomId': roomId}),
+    );
+  }
+
+  // Cast vote
   void sendVote(String roomId, String voterId, String targetId) {
     if (!isConnected) {
-      print('Cannot send vote: not connected');
+      print('⚠️ Cannot send vote: not connected');
       return;
     }
 
@@ -339,6 +305,7 @@ class WebSocketService {
     );
   }
 
+  // Night action
   void sendNightAction(
     String roomId,
     String actorId,
@@ -346,7 +313,7 @@ class WebSocketService {
     String action,
   ) {
     if (!isConnected) {
-      print('Cannot send night action: not connected');
+      print('⚠️ Cannot send night action: not connected');
       return;
     }
 
@@ -361,25 +328,37 @@ class WebSocketService {
     );
   }
 
-  void sendMessage(String destination, Map<String, dynamic> message) {
-    if (!isConnected) {
-      print('Cannot send message: not connected');
-      return;
-    }
-
-    _client?.send(destination: destination, body: jsonEncode(message));
+  // Start heartbeat
+  void _startHeartbeat() {
+    _heartbeatTimer?.cancel();
+    _heartbeatTimer = Timer.periodic(Duration(seconds: 30), (timer) {
+      if (_currentRoomId != null && isConnected) {
+        _client?.send(
+          destination: '/app/room/$_currentRoomId/heartbeat',
+        );
+        print('💓 Heartbeat sent');
+      }
+    });
   }
 
+  // Stop heartbeat
+  void _stopHeartbeat() {
+    _heartbeatTimer?.cancel();
+    _heartbeatTimer = null;
+  }
+
+  // Disconnect
   void disconnect() {
+    _stopHeartbeat();
     if (_client != null) {
       print('🔌 Disconnecting WebSocket...');
       _client?.deactivate();
       _client = null;
-      _currentRoomId = null;
-      _currentPlayerId = null;
-      _currentUsername = null;
-      _updateConnectionState(ConnectionState.disconnected);
     }
+    _currentRoomId = null;
+    _currentPlayerId = null;
+    _currentUsername = null;
+    _updateConnectionState(ConnectionState.disconnected);
   }
 
   void dispose() {

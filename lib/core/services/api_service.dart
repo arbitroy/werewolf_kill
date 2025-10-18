@@ -279,4 +279,5 @@ String get serverUrl {
       throw Exception('Failed to cast vote');
     }
   }
+
 }
