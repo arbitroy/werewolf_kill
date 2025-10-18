@@ -486,7 +486,7 @@ class _RoomDetailsScreenState extends State<RoomDetailsScreen> {
     final authProvider = Provider.of<AuthProvider>(context, listen: false);
     final roomProvider = Provider.of<RoomProvider>(context);
     final room = roomProvider.currentRoom;
-    final isHost = room?.hostId == authProvider.currentUser?.id;
+    final isHost = room?.createdBy == authProvider.currentUser?.id;
 
     return Container(
       padding: EdgeInsets.all(16),

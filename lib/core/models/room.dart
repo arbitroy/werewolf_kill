@@ -1,28 +1,38 @@
 class Room {
   final String id;
   final String name;
-  final String hostId;
+  final String createdBy;  // ✅ Changed from hostId
   final int maxPlayers;
-  final int currentPlayers;
-  final String status;
+  final int currentPlayers;  // Optional - from session data
+  final String status;       // Optional - from session data
+  final String? gameMode;
+  final bool? isPublic;
+  final String? createdAt;
 
   Room({
     required this.id,
     required this.name,
-    required this.hostId,
+    required this.createdBy,  // ✅ Changed from hostId
     this.maxPlayers = 8,
     this.currentPlayers = 0,
     this.status = 'WAITING',
+    this.gameMode,
+    this.isPublic,
+    this.createdAt,
   });
 
   factory Room.fromJson(Map<String, dynamic> json) {
     return Room(
-      id: json['id'],
-      name: json['name'],
-      hostId: json['hostId'],
-      maxPlayers: json['maxPlayers'] ?? 8,
-      currentPlayers: json['currentPlayers'] ?? 0,
-      status: json['status'] ?? 'WAITING',
+      id: json['id'] as String,
+      name: json['name'] as String,
+      createdBy: json['createdBy'] as String,  // ✅ Changed from hostId
+      maxPlayers: json['maxPlayers'] as int? ?? 8,
+      // Optional fields - only present if session exists
+      currentPlayers: json['currentPlayers'] as int? ?? 0,
+      status: json['status'] as String? ?? 'WAITING',
+      gameMode: json['gameMode'] as String?,
+      isPublic: json['isPublic'] as bool?,
+      createdAt: json['createdAt'] as String?,
     );
   }
 
@@ -30,10 +40,13 @@ class Room {
     return {
       'id': id,
       'name': name,
-      'hostId': hostId,
+      'createdBy': createdBy,  // ✅ Changed from hostId
       'maxPlayers': maxPlayers,
       'currentPlayers': currentPlayers,
       'status': status,
+      'gameMode': gameMode,
+      'isPublic': isPublic,
+      'createdAt': createdAt,
     };
   }
 
@@ -42,6 +55,11 @@ class Room {
 
   @override
   String toString() {
-    return 'Room(id: $id, name: $name, players: $currentPlayers/$maxPlayers, status: $status)';
+    return 'Room(id: $id, name: $name, createdBy: $createdBy, players: $currentPlayers/$maxPlayers, status: $status)';
+  }
+  
+  // Helper method to check if current user is creator
+  bool isCreator(String userId) {
+    return createdBy == userId;
   }
 }

@@ -108,56 +108,61 @@ String get serverUrl {
   }
 
   // Rooms
-  Future<Map<String, dynamic>> createRoom(
-    String roomName,
-    String hostId, {
-    int maxPlayers = 8,
-  }) async {
-    print('🔵 Creating room: $roomName');
 
-    final response = await _makeRequestWithRetry(
-      request: () => http
-          .post(
-            Uri.parse('$baseUrl/rooms'),
-            headers: {
-              'Content-Type': 'application/json',
-              'Authorization': 'Bearer $_token',
-            },
-            body: jsonEncode({
-              'name': roomName,
-              'hostId': hostId,
-              'maxPlayers': maxPlayers,
-            }),
-          )
-          .timeout(Duration(seconds: 30)),
-    );
+Future<Map<String, dynamic>> createRoom(
+  String roomName,
+  String createdBy,  // ✅ Changed from hostId
+  {int maxPlayers = 8}
+) async {
+  print('🔵 Creating room: $roomName');
 
-    if (response.statusCode == 200 || response.statusCode == 201) {
-      return jsonDecode(response.body)['data'];
-    } else {
-      final error = jsonDecode(response.body);
-      throw Exception(error['message'] ?? 'Failed to create room');
-    }
+  final response = await _makeRequestWithRetry(
+    request: () => http
+        .post(
+          Uri.parse('$baseUrl/rooms'),
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': 'Bearer $_token',
+          },
+          body: jsonEncode({
+            'name': roomName,
+            'createdBy': createdBy,  // ✅ Changed from hostId
+            'maxPlayers': maxPlayers,
+          }),
+        )
+        .timeout(Duration(seconds: 30)),
+  );
+
+  if (response.statusCode == 200 || response.statusCode == 201) {
+    final responseData = jsonDecode(response.body);
+    return responseData['data'] as Map<String, dynamic>;
+  } else {
+    final error = jsonDecode(response.body);
+    throw Exception(error['message'] ?? 'Failed to create room');
   }
+}
 
-  Future<List<dynamic>> getRooms() async {
-    print('🔵 Getting rooms from: $baseUrl/rooms');
 
-    final response = await _makeRequestWithRetry(
-      request: () => http
-          .get(
-            Uri.parse('$baseUrl/rooms'),
-            headers: {'Authorization': 'Bearer $_token'},
-          )
-          .timeout(Duration(seconds: 30)),
-    );
+Future<List<dynamic>> getRooms() async {
+  print('🔵 Getting rooms from: $baseUrl/rooms');
 
-    if (response.statusCode == 200) {
-      return jsonDecode(response.body)['data'];
-    } else {
-      throw Exception('Failed to load rooms');
-    }
+  final response = await _makeRequestWithRetry(
+    request: () => http
+        .get(
+          Uri.parse('$baseUrl/rooms'),
+          headers: {'Authorization': 'Bearer $_token'},
+        )
+        .timeout(Duration(seconds: 30)),
+  );
+
+  if (response.statusCode == 200) {
+    final responseData = jsonDecode(response.body);
+    // Backend returns List<Map> directly in data field
+    return responseData['data'] as List<dynamic>;
+  } else {
+    throw Exception('Failed to load rooms');
   }
+}
 
   Future<Map<String, dynamic>> getRoomDetails(String roomId) async {
     print('🔵 Getting room details: $baseUrl/rooms/$roomId');

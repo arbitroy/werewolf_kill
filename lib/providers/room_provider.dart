@@ -31,6 +31,11 @@ class RoomProvider with ChangeNotifier {
   bool isPlayerHost(String playerId) {
     return _roomPlayers.any((p) => p.id == playerId && p.isHost);
   }
+  
+  // ✅ Helper to check if user is room creator
+  bool isCreator(String userId) {
+    return _currentRoom?.createdBy == userId;
+  }
 
   // Set token from AuthProvider
   void setToken(String token) {
@@ -59,17 +64,17 @@ class RoomProvider with ChangeNotifier {
     }
   }
 
-  // Create room via REST API
-  Future<Room?> createRoom(String roomName, String hostId, {int maxPlayers = 8}) async {
+  // ✅ Updated createRoom - uses createdBy instead of hostId
+  Future<Room?> createRoom(String roomName, String createdBy, {int maxPlayers = 8}) async {
     _isLoading = true;
     _error = null;
     notifyListeners();
 
     try {
-      print('🔵 Creating room: $roomName for host: $hostId');
+      print('🔵 Creating room: $roomName for creator: $createdBy');
       final roomData = await _apiService.createRoom(
         roomName, 
-        hostId,
+        createdBy,  // ✅ Changed from hostId
         maxPlayers: maxPlayers,
       );
       final room = Room.fromJson(roomData);
@@ -90,7 +95,7 @@ class RoomProvider with ChangeNotifier {
     }
   }
 
-  // ✅ FIXED: Join room (REST API - maintains backward compatibility)
+  // Join room (REST API - validation only, actual join via WebSocket)
   Future<bool> joinRoom(String roomId, String playerId, String playerName) async {
     _isLoading = true;
     _error = null;
@@ -107,7 +112,7 @@ class RoomProvider with ChangeNotifier {
         orElse: () => Room(
           id: roomId,
           name: 'Room',
-          hostId: '',
+          createdBy: playerId,  // ✅ Changed from hostId
           currentPlayers: 1,
         ),
       );
@@ -124,7 +129,7 @@ class RoomProvider with ChangeNotifier {
     }
   }
 
-  // ✅ FIXED: Leave room (maintains backward compatibility)
+  // Leave room
   Future<bool> leaveRoom(String roomId, String playerId) async {
     _isLoading = true;
     _error = null;
@@ -135,20 +140,18 @@ class RoomProvider with ChangeNotifier {
       await _apiService.leaveRoom(roomId, playerId);
       print('✅ Left room successfully via REST API');
       
-      // Clear current room if it's the one we left
       if (_currentRoom?.id == roomId) {
         _currentRoom = null;
         _roomPlayers = [];
       }
       
-      // Update room in list
       final roomIndex = _rooms.indexWhere((r) => r.id == roomId);
       if (roomIndex != -1) {
         final room = _rooms[roomIndex];
         _rooms[roomIndex] = Room(
           id: room.id,
           name: room.name,
-          hostId: room.hostId,
+          createdBy: room.createdBy,  // ✅ Changed from hostId
           maxPlayers: room.maxPlayers,
           currentPlayers: room.currentPlayers - 1,
           status: room.status,
@@ -167,7 +170,7 @@ class RoomProvider with ChangeNotifier {
     }
   }
 
-  // ✅ FIXED: Get room details (maintains backward compatibility)
+  // Get room details
   Future<Room?> getRoomDetails(String roomId) async {
     _isLoading = true;
     _error = null;
@@ -193,7 +196,7 @@ class RoomProvider with ChangeNotifier {
     }
   }
 
-  // ✅ FIXED: Get room players (maintains backward compatibility)
+  // Get room players
   Future<List<Player>> getRoomPlayers(String roomId) async {
     _isLoading = true;
     _error = null;
@@ -218,7 +221,7 @@ class RoomProvider with ChangeNotifier {
     }
   }
 
-  // ✅ NEW: Handle unified room state updates from WebSocket
+  // ✅ Handle unified room state updates from WebSocket
   void handleRoomStateUpdate(Map<String, dynamic> data) {
     print('📥 Handling room state update');
     
@@ -234,7 +237,7 @@ class RoomProvider with ChangeNotifier {
         _currentRoom = Room(
           id: roomId,
           name: roomName,
-          hostId: '', // Not used anymore
+          createdBy: _currentRoom?.createdBy ?? '',  // ✅ Changed from hostId
           maxPlayers: _currentRoom?.maxPlayers ?? 8,
           currentPlayers: playerCount,
           status: currentPhase ?? 'WAITING',
@@ -252,127 +255,16 @@ class RoomProvider with ChangeNotifier {
             id: p['playerId'] as String,
             username: p['username'] as String,
             isHost: p['isHost'] as bool? ?? false,
-            isAlive: p['status'] == 'ALIVE',
             role: p['role'] as String?,
+            // status: p['status'] as String?,
           );
         }).toList();
-        
-        print('✅ Updated ${_roomPlayers.length} players');
       }
       
       notifyListeners();
     } catch (e) {
       print('❌ Error handling room state update: $e');
-      _error = 'Failed to update room state';
-      notifyListeners();
     }
-  }
-
-  // Legacy callback support (for backward compatibility)
-  void handlePlayerJoined(Map<String, dynamic> data) {
-    print('👋 Player joined: ${data['username']}');
-    
-    final playerId = data['playerId'] as String;
-    final username = data['username'] as String;
-    final isHost = data['isHost'] as bool? ?? false;
-    
-    // Check if player already exists
-    final existingIndex = _roomPlayers.indexWhere((p) => p.id == playerId);
-    
-    if (existingIndex != -1) {
-      // ✅ FIXED: Use copyWith instead of mutating
-      _roomPlayers[existingIndex] = _roomPlayers[existingIndex].copyWith(
-        username: username,
-        isHost: isHost,
-      );
-    } else {
-      // Add new player
-      _roomPlayers.add(Player(
-        id: playerId,
-        username: username,
-        isHost: isHost,
-        isAlive: true,
-      ));
-    }
-    
-    // Update current room player count
-    if (_currentRoom != null) {
-      _currentRoom = Room(
-        id: _currentRoom!.id,
-        name: _currentRoom!.name,
-        hostId: _currentRoom!.hostId,
-        maxPlayers: _currentRoom!.maxPlayers,
-        currentPlayers: _roomPlayers.length,
-        status: _currentRoom!.status,
-      );
-    }
-    
-    notifyListeners();
-  }
-
-  void handlePlayerLeft(Map<String, dynamic> data) {
-    print('👋 Player left: ${data['playerId']}');
-    
-    final playerId = data['playerId'] as String;
-    _roomPlayers.removeWhere((p) => p.id == playerId);
-    
-    // Update current room player count
-    if (_currentRoom != null) {
-      _currentRoom = Room(
-        id: _currentRoom!.id,
-        name: _currentRoom!.name,
-        hostId: _currentRoom!.hostId,
-        maxPlayers: _currentRoom!.maxPlayers,
-        currentPlayers: _roomPlayers.length,
-        status: _currentRoom!.status,
-      );
-    }
-    
-    notifyListeners();
-  }
-
-  void handleHostChanged(Map<String, dynamic> data) {
-    print('👑 Host changed to: ${data['newHostUsername']}');
-    
-    final newHostId = data['newHostId'] as String;
-    final newHostUsername = data['newHostUsername'] as String;
-    
-    // ✅ FIXED: Create new Player instances instead of mutating
-    _roomPlayers = _roomPlayers.map((player) {
-      return player.copyWith(isHost: player.id == newHostId);
-    }).toList();
-    
-    _hostUsername = newHostUsername;
-    notifyListeners();
-  }
-
-  // Update room player count (called from WebSocket events)
-  void updateRoomPlayerCount(String roomId, int playerCount) {
-    final roomIndex = _rooms.indexWhere((r) => r.id == roomId);
-    if (roomIndex != -1) {
-      final room = _rooms[roomIndex];
-      _rooms[roomIndex] = Room(
-        id: room.id,
-        name: room.name,
-        hostId: room.hostId,
-        maxPlayers: room.maxPlayers,
-        currentPlayers: playerCount,
-        status: room.status,
-      );
-    }
-    
-    if (_currentRoom?.id == roomId) {
-      _currentRoom = Room(
-        id: _currentRoom!.id,
-        name: _currentRoom!.name,
-        hostId: _currentRoom!.hostId,
-        maxPlayers: _currentRoom!.maxPlayers,
-        currentPlayers: playerCount,
-        status: _currentRoom!.status,
-      );
-    }
-    
-    notifyListeners();
   }
 
   // Add player to room (called from WebSocket events)
@@ -397,7 +289,7 @@ class RoomProvider with ChangeNotifier {
       _rooms[roomIndex] = Room(
         id: room.id,
         name: room.name,
-        hostId: room.hostId,
+        createdBy: room.createdBy,  // ✅ Changed from hostId
         maxPlayers: room.maxPlayers,
         currentPlayers: room.currentPlayers,
         status: status,
@@ -408,7 +300,7 @@ class RoomProvider with ChangeNotifier {
       _currentRoom = Room(
         id: _currentRoom!.id,
         name: _currentRoom!.name,
-        hostId: _currentRoom!.hostId,
+        createdBy: _currentRoom!.createdBy,  // ✅ Changed from hostId
         maxPlayers: _currentRoom!.maxPlayers,
         currentPlayers: _currentRoom!.currentPlayers,
         status: status,

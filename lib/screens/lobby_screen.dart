@@ -367,7 +367,7 @@ class _LobbyScreenState extends State<LobbyScreen> with SingleTickerProviderStat
                     ),
                     SizedBox(height: 4),
                     Text(
-                      'Host: ${room.hostId}',
+                      'Host: ${room.createdBy}',
                       style: TextStyle(
                         fontFamily: 'Lora',
                         fontSize: 14,
