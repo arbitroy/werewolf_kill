@@ -16,10 +16,14 @@ class WebSocketService {
   String? _currentRoomId;
   String? _currentPlayerId;
   String? _currentUsername;
+  String? _currentConnectionUrl;
   Timer? _heartbeatTimer;
+  Timer? _reconnectTimer;
+  int _reconnectAttempts = 0;
+  static const int _maxReconnectAttempts = 5;
 
-  // Callbacks for different event types
-  Function(Map<String, dynamic>)? onRoomStateUpdate;  // ✅ New unified callback
+  // Callbacks
+  Function(Map<String, dynamic>)? onRoomStateUpdate;
   Function(Map<String, dynamic>)? onPlayerJoined;
   Function(Map<String, dynamic>)? onPlayerLeft;
   Function(Map<String, dynamic>)? onHostChanged;
@@ -54,11 +58,13 @@ class WebSocketService {
       return;
     }
 
+    // Store connection details for reconnection
     _currentRoomId = roomId;
     _currentPlayerId = playerId;
     _currentUsername = username;
+    _currentConnectionUrl = connectionUrl;
 
-    // Build WebSocket URL
+    // Build WebSocket URL - native WebSocket only, no SockJS
     String wsUrl;
     if (connectionUrl.startsWith('http://')) {
       wsUrl = connectionUrl.replaceFirst('http://', 'ws://') + '/ws/game';
@@ -78,10 +84,12 @@ class WebSocketService {
         onDisconnect: (frame) => _onDisconnect(),
         onWebSocketError: (error) => _onWebSocketError(error),
         onStompError: (frame) => _onStompError(frame),
-        reconnectDelay: const Duration(seconds: 5),
-        heartbeatIncoming: const Duration(seconds: 10),
-        heartbeatOutgoing: const Duration(seconds: 10),
+        reconnectDelay: Duration(seconds: 5),
+        heartbeatIncoming: Duration(seconds: 10),
+        heartbeatOutgoing: Duration(seconds: 10),
         onWebSocketDone: () => _onWebSocketDone(),
+        // ✅ ADD: Connection timeout
+        connectionTimeout: Duration(seconds: 10),
       ),
     );
 
@@ -91,15 +99,26 @@ class WebSocketService {
 
   void _onConnect(StompFrame frame, String roomId) {
     print('✅ WebSocket CONNECTED');
+    _reconnectAttempts = 0; // Reset reconnect counter
     _updateConnectionState(ConnectionState.connected);
 
-    // Subscribe to room updates (NEW unified topic)
+    // Subscribe to room updates
     print('📡 Subscribing to /topic/room/$roomId');
     _client?.subscribe(
       destination: '/topic/room/$roomId',
       callback: (frame) {
         if (frame.body != null) {
           _handleRoomMessage(frame);
+        }
+      },
+    );
+
+    // Subscribe to private role assignments
+    _client?.subscribe(
+      destination: '/user/queue/role',
+      callback: (frame) {
+        if (frame.body != null) {
+          _handleRoleMessage(frame);
         }
       },
     );
@@ -144,8 +163,15 @@ class WebSocketService {
 
   void _onWebSocketError(dynamic error) {
     print('❌ WebSocket error: $error');
-    _updateConnectionState(ConnectionState.error);
-    onError?.call(error.toString());
+
+    // Check if it's a 502 error (server sleeping)
+    if (error.toString().contains('502')) {
+      print('🌙 Server appears to be sleeping. Will retry...');
+      _scheduleReconnect();
+    } else {
+      _updateConnectionState(ConnectionState.error);
+      onError?.call(error.toString());
+    }
   }
 
   void _onStompError(StompFrame frame) {
@@ -155,13 +181,64 @@ class WebSocketService {
   }
 
   void _onWebSocketDone() {
-    print('🔄 WebSocket connection closed, reconnecting...');
-    _updateConnectionState(ConnectionState.reconnecting);
+    print('🔄 WebSocket connection closed');
+    _scheduleReconnect();
   }
+
+  // ✅ NEW: Smart reconnection with exponential backoff
+  void _scheduleReconnect() {
+    if (_reconnectAttempts >= _maxReconnectAttempts) {
+      print('❌ Max reconnect attempts reached');
+      _updateConnectionState(ConnectionState.error);
+      onError?.call(
+        'Failed to reconnect after $_maxReconnectAttempts attempts',
+      );
+      return;
+    }
+
+    _updateConnectionState(ConnectionState.reconnecting);
+    _reconnectAttempts++;
+
+    // Exponential backoff: 2s, 4s, 8s, 16s, 32s
+    final delay = Duration(seconds: 2 * _reconnectAttempts);
+    print(
+      '⏳ Reconnecting in ${delay.inSeconds}s (attempt $_reconnectAttempts/$_maxReconnectAttempts)',
+    );
+
+    _reconnectTimer?.cancel();
+    _reconnectTimer = Timer(delay, () {
+      if (_currentRoomId != null &&
+          _currentPlayerId != null &&
+          _currentUsername != null &&
+          _currentConnectionUrl != null) {
+        print('🔄 Attempting reconnection...');
+        disconnect(); // Clean up old connection
+        connect(
+          _currentRoomId!,
+          _currentPlayerId!,
+          _currentUsername!,
+          _currentConnectionUrl!,
+        );
+      }
+    });
+  } 
 
   void _updateConnectionState(ConnectionState newState) {
     _connectionState = newState;
     onConnectionStateChanged?.call(newState);
+  }
+
+  void _handleRoleMessage(StompFrame frame) {
+    try {
+      final data = jsonDecode(frame.body!);
+      final type = data['type'] as String?;
+
+      if (type == 'ROLE_ASSIGNED') {
+        onRoleAssigned?.call(data);
+      }
+    } catch (e) {
+      print('❌ Error parsing role message: $e');
+    }
   }
 
   void _handleRoomMessage(StompFrame frame) {
@@ -172,24 +249,19 @@ class WebSocketService {
       print('📩 Room message type: $type');
 
       switch (type) {
-        case 'ROOM_STATE_UPDATE':  // ✅ NEW: Unified room state
-          print('📊 Room state update received');
+        case 'ROOM_STATE_UPDATE':
           onRoomStateUpdate?.call(data);
           break;
         case 'PLAYER_JOINED':
-          print('👋 Player joined');
           onPlayerJoined?.call(data);
           break;
         case 'PLAYER_LEFT':
-          print('👋 Player left');
           onPlayerLeft?.call(data);
           break;
         case 'HOST_CHANGED':
-          print('👑 Host changed');
           onHostChanged?.call(data);
           break;
         case 'GAME_STARTED':
-          print('🎮 Game started');
           onGameStarted?.call(data);
           break;
         default:
@@ -205,8 +277,6 @@ class WebSocketService {
     try {
       final data = jsonDecode(frame.body!);
       final type = data['type'] as String?;
-
-      print('🎮 Game message type: $type');
 
       switch (type) {
         case 'GAME_UPDATE':
@@ -224,12 +294,9 @@ class WebSocketService {
         case 'PLAYER_DIED':
           onPlayerDied?.call(data);
           break;
-        default:
-          print('⚠️ Unknown game message type: $type');
       }
     } catch (e) {
       print('❌ Error parsing game message: $e');
-      onError?.call('Failed to parse game message: $e');
     }
   }
 
@@ -244,7 +311,6 @@ class WebSocketService {
     }
   }
 
-  // Send join room message
   void sendJoinRoom(String roomId, String playerId, String username) {
     if (!isConnected) {
       print('⚠️ Cannot send join: not connected');
@@ -254,114 +320,49 @@ class WebSocketService {
     print('📤 Sending join room message');
     _client?.send(
       destination: '/app/room/$roomId/join',
-      body: jsonEncode({
-        'playerId': playerId,
-        'username': username,
-      }),
+      body: jsonEncode({'playerId': playerId, 'username': username}),
     );
   }
 
-  // Send leave room message
   void sendLeaveRoom(String roomId) {
-    if (!isConnected) {
-      print('⚠️ Cannot send leave: not connected');
-      return;
-    }
-
-    print('📤 Sending leave room message');
-    _client?.send(
-      destination: '/app/room/$roomId/leave',
-    );
+    if (!isConnected) return;
+    _client?.send(destination: '/app/room/$roomId/leave');
   }
 
-  // Start game
-  void sendStartGame(String roomId) {
-    if (!isConnected) {
-      print('⚠️ Cannot send start game: not connected');
-      return;
-    }
-
-    print('📤 Sending start game message');
-    _client?.send(
-      destination: '/app/game.start',
-      body: jsonEncode({'roomId': roomId}),
-    );
-  }
-
-  // Cast vote
-  void sendVote(String roomId, String voterId, String targetId) {
-    if (!isConnected) {
-      print('⚠️ Cannot send vote: not connected');
-      return;
-    }
-
-    _client?.send(
-      destination: '/app/game.vote',
-      body: jsonEncode({
-        'roomId': roomId,
-        'voterId': voterId,
-        'targetId': targetId,
-      }),
-    );
-  }
-
-  // Night action
-  void sendNightAction(
-    String roomId,
-    String actorId,
-    String targetId,
-    String action,
-  ) {
-    if (!isConnected) {
-      print('⚠️ Cannot send night action: not connected');
-      return;
-    }
-
-    _client?.send(
-      destination: '/app/game.nightAction',
-      body: jsonEncode({
-        'roomId': roomId,
-        'actorId': actorId,
-        'targetId': targetId,
-        'action': action,
-      }),
-    );
-  }
-
-  // Start heartbeat
   void _startHeartbeat() {
     _heartbeatTimer?.cancel();
     _heartbeatTimer = Timer.periodic(Duration(seconds: 30), (timer) {
       if (_currentRoomId != null && isConnected) {
-        _client?.send(
-          destination: '/app/room/$_currentRoomId/heartbeat',
-        );
+        _client?.send(destination: '/app/room/$_currentRoomId/heartbeat');
         print('💓 Heartbeat sent');
       }
     });
   }
 
-  // Stop heartbeat
   void _stopHeartbeat() {
     _heartbeatTimer?.cancel();
     _heartbeatTimer = null;
   }
 
-  // Disconnect
   void disconnect() {
     _stopHeartbeat();
+    _reconnectTimer?.cancel();
+    _reconnectAttempts = 0;
+
     if (_client != null) {
       print('🔌 Disconnecting WebSocket...');
       _client?.deactivate();
       _client = null;
     }
-    _currentRoomId = null;
-    _currentPlayerId = null;
-    _currentUsername = null;
+
     _updateConnectionState(ConnectionState.disconnected);
   }
 
   void dispose() {
     disconnect();
+    _currentRoomId = null;
+    _currentPlayerId = null;
+    _currentUsername = null;
+    _currentConnectionUrl = null;
   }
 }
