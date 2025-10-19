@@ -62,6 +62,24 @@ class _WaitingRoomScreenState extends State<WaitingRoomScreen> {
   Widget build(BuildContext context) {
     return Consumer<GameProvider>(
       builder: (context, gameProvider, child) {
+        // ✅ CHECK FOR GAME START AND AUTO-NAVIGATE
+        final gameState = gameProvider.gameState;
+        if (gameState != null &&
+            gameState.isActive &&
+            (gameState.phase == 'STARTING' || gameState.phase == 'NIGHT')) {
+          // Use WidgetsBinding to navigate after build completes
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (mounted) {
+              print('🎮 Game started - Navigating to game screen');
+              Navigator.pushReplacementNamed(
+                context,
+                '/game',
+                arguments: {'roomId': widget.roomId},
+              );
+            }
+          });
+        }
+
         final players = gameProvider.players;
         final authProvider = Provider.of<AuthProvider>(context, listen: false);
 
@@ -74,7 +92,7 @@ class _WaitingRoomScreenState extends State<WaitingRoomScreen> {
             isHost: false,
           ),
         );
-        
+
         // ✅ Use actual host status from the player list
         final amIHost = myPlayer.isHost;
         final canStart = players.length >= 3 && amIHost;
@@ -98,11 +116,19 @@ class _WaitingRoomScreenState extends State<WaitingRoomScreen> {
                 children: [
                   _buildHeader(widget.roomName, isConnected),
                   Expanded(
-                    child: _buildPlayerList(players, authProvider.currentUser?.id),
+                    child: _buildPlayerList(
+                      players,
+                      authProvider.currentUser?.id,
+                    ),
                   ),
                   if (gameProvider.error != null)
                     _buildErrorMessage(gameProvider.error!),
-                  _buildBottomBar(canStart, isConnected, gameProvider.isLoading, amIHost),
+                  _buildBottomBar(
+                    canStart,
+                    isConnected,
+                    gameProvider.isLoading,
+                    amIHost,
+                  ),
                 ],
               ),
             ),
@@ -132,7 +158,7 @@ class _WaitingRoomScreenState extends State<WaitingRoomScreen> {
                             color: Colors.green.withOpacity(0.5),
                             blurRadius: 8,
                             spreadRadius: 2,
-                          )
+                          ),
                         ]
                       : [],
                 ),
@@ -214,7 +240,9 @@ class _WaitingRoomScreenState extends State<WaitingRoomScreen> {
         side: BorderSide(
           color: player.isHost
               ? Color(0xFFD4AF37)
-              : (isMe ? Color(0xFFD4AF37).withOpacity(0.3) : Colors.transparent),
+              : (isMe
+                    ? Color(0xFFD4AF37).withOpacity(0.3)
+                    : Colors.transparent),
           width: player.isHost ? 2 : 1,
         ),
       ),
@@ -232,16 +260,10 @@ class _WaitingRoomScreenState extends State<WaitingRoomScreen> {
                     shape: BoxShape.circle,
                     gradient: player.isHost
                         ? LinearGradient(
-                            colors: [
-                              Color(0xFFD4AF37),
-                              Color(0xFFFFD700),
-                            ],
+                            colors: [Color(0xFFD4AF37), Color(0xFFFFD700)],
                           )
                         : LinearGradient(
-                            colors: [
-                              Color(0xFF2D1B4E),
-                              Color(0xFF1A0F2E),
-                            ],
+                            colors: [Color(0xFF2D1B4E), Color(0xFF1A0F2E)],
                           ),
                     border: Border.all(
                       color: isMe ? Color(0xFFD4AF37) : Colors.transparent,
@@ -250,7 +272,7 @@ class _WaitingRoomScreenState extends State<WaitingRoomScreen> {
                   ),
                   child: Center(
                     child: Text(
-                      player.username.isNotEmpty 
+                      player.username.isNotEmpty
                           ? player.username[0].toUpperCase()
                           : '?',
                       style: TextStyle(
@@ -321,10 +343,7 @@ class _WaitingRoomScreenState extends State<WaitingRoomScreen> {
                       ),
                       decoration: BoxDecoration(
                         gradient: LinearGradient(
-                          colors: [
-                            Color(0xFFD4AF37),
-                            Color(0xFFFFD700),
-                          ],
+                          colors: [Color(0xFFD4AF37), Color(0xFFFFD700)],
                         ),
                         borderRadius: BorderRadius.circular(12),
                         boxShadow: [
@@ -338,11 +357,7 @@ class _WaitingRoomScreenState extends State<WaitingRoomScreen> {
                       child: Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          Icon(
-                            Icons.stars,
-                            color: Color(0xFF1A0F2E),
-                            size: 14,
-                          ),
+                          Icon(Icons.stars, color: Color(0xFF1A0F2E), size: 14),
                           SizedBox(width: 4),
                           Text(
                             'HOST',
@@ -386,9 +401,21 @@ class _WaitingRoomScreenState extends State<WaitingRoomScreen> {
     );
   }
 
-  Widget _buildBottomBar(bool canStart, bool isConnected, bool isLoading, bool amIHost) {
+  Widget _buildBottomBar(
+    bool canStart,
+    bool isConnected,
+    bool isLoading,
+    bool amIHost,
+  ) {
     final playerCount = context.watch<GameProvider>().players.length;
-    
+
+    // ✅ FIX: Only enable start if WebSocket is connected AND we have players
+    final canActuallyStart =
+        canStart &&
+        isConnected &&
+        playerCount >= 3 && // Verify we have the player list
+        !isLoading;
+
     return Container(
       padding: EdgeInsets.all(16),
       decoration: BoxDecoration(
@@ -405,24 +432,47 @@ class _WaitingRoomScreenState extends State<WaitingRoomScreen> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
+            // Connection status indicator
+            if (!isConnected)
+              Container(
+                margin: EdgeInsets.only(bottom: 12),
+                padding: EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.orange.withOpacity(0.2),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: Colors.orange),
+                ),
+                child: Row(
+                  children: [
+                    SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: Colors.orange,
+                      ),
+                    ),
+                    SizedBox(width: 12),
+                    Text(
+                      'Connecting to game server...',
+                      style: TextStyle(color: Colors.orange),
+                    ),
+                  ],
+                ),
+              ),
+
             // Player count indicator
             Container(
               padding: EdgeInsets.symmetric(horizontal: 16, vertical: 12),
               decoration: BoxDecoration(
                 color: Color(0xFF2D1B4E).withOpacity(0.5),
                 borderRadius: BorderRadius.circular(12),
-                border: Border.all(
-                  color: Color(0xFFD4AF37).withOpacity(0.3),
-                ),
+                border: Border.all(color: Color(0xFFD4AF37).withOpacity(0.3)),
               ),
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  Icon(
-                    Icons.people,
-                    color: Color(0xFFD4AF37),
-                    size: 20,
-                  ),
+                  Icon(Icons.people, color: Color(0xFFD4AF37), size: 20),
                   SizedBox(width: 8),
                   Text(
                     '$playerCount / 8 Players',
@@ -446,13 +496,27 @@ class _WaitingRoomScreenState extends State<WaitingRoomScreen> {
               ),
             ),
             SizedBox(height: 12),
+
             // Action buttons
             Row(
               children: [
                 // Leave button
                 Expanded(
                   child: ElevatedButton.icon(
-                    onPressed: () => Navigator.pop(context),
+                    onPressed: () async {
+                      // ✅ Proper leave sequence
+                      final gameProvider = context.read<GameProvider>();
+
+                      // 1. Send WebSocket leave message
+                      if (gameProvider.currentRoomId != null) {
+                        gameProvider.leaveRoom(); // New method we'll create
+                      }
+
+                      // 2. Navigate back
+                      if (mounted) {
+                        Navigator.pop(context);
+                      }
+                    },
                     icon: Icon(Icons.exit_to_app),
                     label: Text('Leave Room'),
                     style: ElevatedButton.styleFrom(
@@ -466,15 +530,35 @@ class _WaitingRoomScreenState extends State<WaitingRoomScreen> {
                   ),
                 ),
                 SizedBox(width: 12),
+
                 // Start button (only for host)
                 if (amIHost)
                   Expanded(
                     flex: 2,
                     child: ElevatedButton.icon(
-                      onPressed: canStart && isConnected && !isLoading
-                          ? () {
+                      onPressed: canActuallyStart
+                          ? () async {
                               final gameProvider = context.read<GameProvider>();
-                              gameProvider.startGame();
+                              final success = await gameProvider.startGame();
+
+                              // ✅ FIX: Show user-friendly error if start fails
+                              if (!success && mounted) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(
+                                    content: Text(
+                                      gameProvider.error?.contains(
+                                                'WebSocket',
+                                              ) ??
+                                              false
+                                          ? 'Please wait for all players to connect'
+                                          : (gameProvider.error ??
+                                                'Failed to start game'),
+                                    ),
+                                    backgroundColor: Color(0xFF8B0000),
+                                    duration: Duration(seconds: 3),
+                                  ),
+                                );
+                              }
                             }
                           : null,
                       icon: isLoading
@@ -490,13 +574,17 @@ class _WaitingRoomScreenState extends State<WaitingRoomScreen> {
                       label: Text(
                         isLoading
                             ? 'Starting...'
-                            : (canStart ? 'Start Game' : 'Need 3+ Players'),
+                            : !isConnected
+                            ? 'Connecting...'
+                            : playerCount < 3
+                            ? 'Need 3+ Players'
+                            : 'Start Game',
                       ),
                       style: ElevatedButton.styleFrom(
-                        backgroundColor: canStart
+                        backgroundColor: canActuallyStart
                             ? Color(0xFFD4AF37)
                             : Color(0xFF2D1B4E),
-                        foregroundColor: canStart
+                        foregroundColor: canActuallyStart
                             ? Color(0xFF1A0F2E)
                             : Color(0xFFC0C0D8).withOpacity(0.5),
                         padding: EdgeInsets.symmetric(vertical: 16),

@@ -3,9 +3,19 @@ import 'package:http/http.dart' as http;
 import '../../config/constants.dart';
 
 class ApiService {
+  static final ApiService _instance = ApiService._internal();
+
+  factory ApiService() {
+    return _instance;
+  }
+
+  ApiService._internal();
+
   final String baseUrl = AppConstants.apiBaseUrl;
+
   String? _token;
-String get serverUrl {
+
+  String get serverUrl {
     // AppConstants.apiBaseUrl is "https://werewolf-backend-jsji.onrender.com/api"
     // We need "https://werewolf-backend-jsji.onrender.com"
     if (baseUrl.endsWith('/api')) {
@@ -13,10 +23,25 @@ String get serverUrl {
     }
     return baseUrl;
   }
+
   // Set auth token
   void setToken(String token) {
     _token = token;
     print('🔐 Token set: ${token.substring(0, 10)}...');
+  }
+
+  // ✅ Add getter to check if token exists
+  bool get hasToken => _token != null && _token!.isNotEmpty;
+
+  // ✅ Add method to log token status
+  void debugTokenStatus() {
+    if (_token == null) {
+      print('❌ Token is NULL');
+    } else if (_token!.isEmpty) {
+      print('❌ Token is EMPTY');
+    } else {
+      print('✅ Token exists: ${_token!.substring(0, 10)}...');
+    }
   }
 
   // Helper method for retrying failed requests
@@ -109,60 +134,59 @@ String get serverUrl {
 
   // Rooms
 
-Future<Map<String, dynamic>> createRoom(
-  String roomName,
-  String createdBy,  // ✅ Changed from hostId
-  {int maxPlayers = 8}
-) async {
-  print('🔵 Creating room: $roomName');
+  Future<Map<String, dynamic>> createRoom(
+    String roomName,
+    String createdBy, { // ✅ Changed from hostId
+    int maxPlayers = 8,
+  }) async {
+    print('🔵 Creating room: $roomName');
 
-  final response = await _makeRequestWithRetry(
-    request: () => http
-        .post(
-          Uri.parse('$baseUrl/rooms'),
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': 'Bearer $_token',
-          },
-          body: jsonEncode({
-            'name': roomName,
-            'createdBy': createdBy,  // ✅ Changed from hostId
-            'maxPlayers': maxPlayers,
-          }),
-        )
-        .timeout(Duration(seconds: 30)),
-  );
+    final response = await _makeRequestWithRetry(
+      request: () => http
+          .post(
+            Uri.parse('$baseUrl/rooms'),
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': 'Bearer $_token',
+            },
+            body: jsonEncode({
+              'name': roomName,
+              'createdBy': createdBy, // ✅ Changed from hostId
+              'maxPlayers': maxPlayers,
+            }),
+          )
+          .timeout(Duration(seconds: 30)),
+    );
 
-  if (response.statusCode == 200 || response.statusCode == 201) {
-    final responseData = jsonDecode(response.body);
-    return responseData['data'] as Map<String, dynamic>;
-  } else {
-    final error = jsonDecode(response.body);
-    throw Exception(error['message'] ?? 'Failed to create room');
+    if (response.statusCode == 200 || response.statusCode == 201) {
+      final responseData = jsonDecode(response.body);
+      return responseData['data'] as Map<String, dynamic>;
+    } else {
+      final error = jsonDecode(response.body);
+      throw Exception(error['message'] ?? 'Failed to create room');
+    }
   }
-}
 
+  Future<List<dynamic>> getRooms() async {
+    print('🔵 Getting rooms from: $baseUrl/rooms');
 
-Future<List<dynamic>> getRooms() async {
-  print('🔵 Getting rooms from: $baseUrl/rooms');
+    final response = await _makeRequestWithRetry(
+      request: () => http
+          .get(
+            Uri.parse('$baseUrl/rooms'),
+            headers: {'Authorization': 'Bearer $_token'},
+          )
+          .timeout(Duration(seconds: 30)),
+    );
 
-  final response = await _makeRequestWithRetry(
-    request: () => http
-        .get(
-          Uri.parse('$baseUrl/rooms'),
-          headers: {'Authorization': 'Bearer $_token'},
-        )
-        .timeout(Duration(seconds: 30)),
-  );
-
-  if (response.statusCode == 200) {
-    final responseData = jsonDecode(response.body);
-    // Backend returns List<Map> directly in data field
-    return responseData['data'] as List<dynamic>;
-  } else {
-    throw Exception('Failed to load rooms');
+    if (response.statusCode == 200) {
+      final responseData = jsonDecode(response.body);
+      // Backend returns List<Map> directly in data field
+      return responseData['data'] as List<dynamic>;
+    } else {
+      throw Exception('Failed to load rooms');
+    }
   }
-}
 
   Future<Map<String, dynamic>> getRoomDetails(String roomId) async {
     print('🔵 Getting room details: $baseUrl/rooms/$roomId');
@@ -249,18 +273,38 @@ Future<List<dynamic>> getRooms() async {
   // Game
   Future<void> startGame(String roomId) async {
     print('🔵 Starting game: $baseUrl/game/$roomId/start');
+    
+    // ✅ Add token validation before making request
+    if (_token == null || _token!.isEmpty) {
+      print('❌ ERROR: No authentication token available!');
+      throw Exception('Not authenticated. Please log in again.');
+    }
+    
+    print('🔐 Using token: ${_token!.substring(0, 10)}...');
 
     final response = await _makeRequestWithRetry(
       request: () => http
           .post(
             Uri.parse('$baseUrl/game/$roomId/start'),
-            headers: {'Authorization': 'Bearer $_token'},
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': 'Bearer $_token',
+            },
           )
           .timeout(Duration(seconds: 30)),
     );
 
     if (response.statusCode != 200) {
-      throw Exception('Failed to start game');
+      // ✅ Extract actual error message from response
+      String errorMessage = 'Failed to start game';
+      try {
+        final errorBody = jsonDecode(response.body);
+        errorMessage = errorBody['message'] ?? errorMessage;
+        print('❌ Backend error: $errorMessage');
+      } catch (e) {
+        print('❌ Could not parse error response');
+      }
+      throw Exception(errorMessage);
     }
   }
 
@@ -284,5 +328,4 @@ Future<List<dynamic>> getRooms() async {
       throw Exception('Failed to cast vote');
     }
   }
-
 }

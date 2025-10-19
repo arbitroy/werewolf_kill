@@ -5,7 +5,7 @@ import '../core/services/api_service.dart';
 
 class RoomProvider with ChangeNotifier {
   final ApiService _apiService = ApiService();
-  
+
   List<Room> _rooms = [];
   Room? _currentRoom;
   List<Player> _roomPlayers = [];
@@ -31,7 +31,7 @@ class RoomProvider with ChangeNotifier {
   bool isPlayerHost(String playerId) {
     return _roomPlayers.any((p) => p.id == playerId && p.isHost);
   }
-  
+
   // ✅ Helper to check if user is room creator
   bool isCreator(String userId) {
     return _currentRoom?.createdBy == userId;
@@ -53,7 +53,7 @@ class RoomProvider with ChangeNotifier {
       final roomsData = await _apiService.getRooms();
       _rooms = roomsData.map((data) => Room.fromJson(data)).toList();
       print('✅ Loaded ${_rooms.length} rooms');
-      
+
       _isLoading = false;
       notifyListeners();
     } catch (e) {
@@ -65,7 +65,11 @@ class RoomProvider with ChangeNotifier {
   }
 
   // ✅ Updated createRoom - uses createdBy instead of hostId
-  Future<Room?> createRoom(String roomName, String createdBy, {int maxPlayers = 8}) async {
+  Future<Room?> createRoom(
+    String roomName,
+    String createdBy, {
+    int maxPlayers = 8,
+  }) async {
     _isLoading = true;
     _error = null;
     notifyListeners();
@@ -73,16 +77,16 @@ class RoomProvider with ChangeNotifier {
     try {
       print('🔵 Creating room: $roomName for creator: $createdBy');
       final roomData = await _apiService.createRoom(
-        roomName, 
-        createdBy,  // ✅ Changed from hostId
+        roomName,
+        createdBy, // ✅ Changed from hostId
         maxPlayers: maxPlayers,
       );
       final room = Room.fromJson(roomData);
       print('✅ Room created: ${room.id}');
-      
+
       _currentRoom = room;
       _rooms.add(room);
-      
+
       _isLoading = false;
       notifyListeners();
       return room;
@@ -96,7 +100,11 @@ class RoomProvider with ChangeNotifier {
   }
 
   // Join room (REST API - validation only, actual join via WebSocket)
-  Future<bool> joinRoom(String roomId, String playerId, String playerName) async {
+  Future<bool> joinRoom(
+    String roomId,
+    String playerId,
+    String playerName,
+  ) async {
     _isLoading = true;
     _error = null;
     notifyListeners();
@@ -105,18 +113,18 @@ class RoomProvider with ChangeNotifier {
       print('🔵 Joining room: $roomId as player: $playerId');
       await _apiService.joinRoom(roomId, playerId);
       print('✅ Joined room successfully via REST API');
-      
+
       // Update current room (will be overwritten by WebSocket updates)
       _currentRoom = _rooms.firstWhere(
         (room) => room.id == roomId,
         orElse: () => Room(
           id: roomId,
           name: 'Room',
-          createdBy: playerId,  // ✅ Changed from hostId
+          createdBy: playerId, // ✅ Changed from hostId
           currentPlayers: 1,
         ),
       );
-      
+
       _isLoading = false;
       notifyListeners();
       return true;
@@ -131,42 +139,25 @@ class RoomProvider with ChangeNotifier {
 
   // Leave room
   Future<bool> leaveRoom(String roomId, String playerId) async {
-    _isLoading = true;
-    _error = null;
-    notifyListeners();
-
     try {
-      print('🔵 Leaving room: $roomId as player: $playerId');
+      print('🔵 Leaving room via REST API: $roomId');
+
+      // Optional: Keep the REST API call for logging/analytics
+      // But don't rely on it for actual leaving
       await _apiService.leaveRoom(roomId, playerId);
-      print('✅ Left room successfully via REST API');
-      
+
+      // ✅ DON'T update local state - WebSocket will handle it
+      // Just clear the reference
       if (_currentRoom?.id == roomId) {
         _currentRoom = null;
         _roomPlayers = [];
       }
-      
-      final roomIndex = _rooms.indexWhere((r) => r.id == roomId);
-      if (roomIndex != -1) {
-        final room = _rooms[roomIndex];
-        _rooms[roomIndex] = Room(
-          id: room.id,
-          name: room.name,
-          createdBy: room.createdBy,  // ✅ Changed from hostId
-          maxPlayers: room.maxPlayers,
-          currentPlayers: room.currentPlayers - 1,
-          status: room.status,
-        );
-      }
-      
-      _isLoading = false;
-      notifyListeners();
+
       return true;
     } catch (e) {
-      print('❌ Leave room error: $e');
-      _error = e.toString().replaceAll('Exception: ', '');
-      _isLoading = false;
-      notifyListeners();
-      return false;
+      print('❌ Leave room API error: $e');
+      // Don't fail - WebSocket is the real source of truth
+      return true;
     }
   }
 
@@ -181,9 +172,9 @@ class RoomProvider with ChangeNotifier {
       final roomData = await _apiService.getRoomDetails(roomId);
       final room = Room.fromJson(roomData);
       print('✅ Got room details: ${room.name}');
-      
+
       _currentRoom = room;
-      
+
       _isLoading = false;
       notifyListeners();
       return room;
@@ -207,7 +198,7 @@ class RoomProvider with ChangeNotifier {
       final playersData = await _apiService.getRoomPlayers(roomId);
       _roomPlayers = playersData.map((data) => Player.fromJson(data)).toList();
       print('✅ Got ${_roomPlayers.length} players');
-      
+
       _isLoading = false;
       notifyListeners();
       return _roomPlayers;
@@ -224,29 +215,29 @@ class RoomProvider with ChangeNotifier {
   // ✅ Handle unified room state updates from WebSocket
   void handleRoomStateUpdate(Map<String, dynamic> data) {
     print('📥 Handling room state update');
-    
+
     try {
       final roomId = data['roomId'] as String;
       final roomName = data['roomName'] as String;
       final playerCount = data['playerCount'] as int;
       final hostUsername = data['hostUsername'] as String?;
       final currentPhase = data['currentPhase'] as String?;
-      
+
       // Update current room metadata
       if (_currentRoom?.id == roomId || _currentRoom == null) {
         _currentRoom = Room(
           id: roomId,
           name: roomName,
-          createdBy: _currentRoom?.createdBy ?? '',  // ✅ Changed from hostId
+          createdBy: _currentRoom?.createdBy ?? '', // ✅ Changed from hostId
           maxPlayers: _currentRoom?.maxPlayers ?? 8,
           currentPlayers: playerCount,
           status: currentPhase ?? 'WAITING',
         );
       }
-      
+
       _hostUsername = hostUsername;
       _currentPhase = currentPhase;
-      
+
       // Update player list from the state update
       final playersData = data['players'] as List<dynamic>?;
       if (playersData != null) {
@@ -260,7 +251,7 @@ class RoomProvider with ChangeNotifier {
           );
         }).toList();
       }
-      
+
       notifyListeners();
     } catch (e) {
       print('❌ Error handling room state update: $e');
@@ -289,24 +280,24 @@ class RoomProvider with ChangeNotifier {
       _rooms[roomIndex] = Room(
         id: room.id,
         name: room.name,
-        createdBy: room.createdBy,  // ✅ Changed from hostId
+        createdBy: room.createdBy, // ✅ Changed from hostId
         maxPlayers: room.maxPlayers,
         currentPlayers: room.currentPlayers,
         status: status,
       );
     }
-    
+
     if (_currentRoom?.id == roomId) {
       _currentRoom = Room(
         id: _currentRoom!.id,
         name: _currentRoom!.name,
-        createdBy: _currentRoom!.createdBy,  // ✅ Changed from hostId
+        createdBy: _currentRoom!.createdBy, // ✅ Changed from hostId
         maxPlayers: _currentRoom!.maxPlayers,
         currentPlayers: _currentRoom!.currentPlayers,
         status: status,
       );
     }
-    
+
     notifyListeners();
   }
 

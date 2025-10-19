@@ -221,7 +221,7 @@ class WebSocketService {
         );
       }
     });
-  } 
+  }
 
   void _updateConnectionState(ConnectionState newState) {
     _connectionState = newState;
@@ -278,7 +278,13 @@ class WebSocketService {
       final data = jsonDecode(frame.body!);
       final type = data['type'] as String?;
 
+      print('📨 Game message type: $type'); // ✅ ADD THIS LOG
+
       switch (type) {
+        case 'GAME_STARTED': // ✅ ADD THIS CASE
+          print('🎮 GAME_STARTED message received!');
+          onGameStarted?.call(data);
+          break;
         case 'GAME_UPDATE':
           onGameUpdate?.call(data);
           break;
@@ -294,6 +300,8 @@ class WebSocketService {
         case 'PLAYER_DIED':
           onPlayerDied?.call(data);
           break;
+        default:
+          print('⚠️ Unknown game message type: $type');
       }
     } catch (e) {
       print('❌ Error parsing game message: $e');

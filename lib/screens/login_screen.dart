@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/auth_provider.dart';
 import '../core/services/server_health_service.dart';
+import '../providers/game_provider.dart';
+import '../providers/room_provider.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -264,6 +266,14 @@ class _LoginScreenState extends State<LoginScreen>
 
       if (success && mounted) {
         print('✅ Login successful!');
+
+        // ✅ CRITICAL: Set token in ALL providers
+        final roomProvider = Provider.of<RoomProvider>(context, listen: false);
+        final gameProvider = Provider.of<GameProvider>(context, listen: false);
+
+        roomProvider.setToken(authProvider.token!);
+        gameProvider.setToken(authProvider.token!);
+
         Navigator.pushReplacementNamed(
           context,
           '/lobby',

@@ -11,12 +11,14 @@ import 'providers/game_provider.dart';
 import 'providers/room_provider.dart';
 
 void main() {
+  WidgetsFlutterBinding.ensureInitialized();
+
   runApp(
     MultiProvider(
       providers: [
         ChangeNotifierProvider(create: (_) => AuthProvider()),
-        ChangeNotifierProvider(create: (_) => GameProvider()),
         ChangeNotifierProvider(create: (_) => RoomProvider()),
+        ChangeNotifierProvider(create: (_) => GameProvider()),
       ],
       child: WerewolfGame(),
     ),
@@ -36,14 +38,18 @@ class WerewolfGame extends StatelessWidget {
       routes: {
         '/': (context) => LoginScreen(),
         '/lobby': (context) {
-          final args = ModalRoute.of(context)?.settings.arguments as Map<String, String>?;
+          final args =
+              ModalRoute.of(context)?.settings.arguments
+                  as Map<String, String>?;
           return LobbyScreen(
             userId: args?['userId'] ?? 'temp-id',
             username: args?['username'] ?? 'Guest',
           );
         },
         '/waiting': (context) {
-          final args = ModalRoute.of(context)!.settings.arguments as Map<String, dynamic>;
+          final args =
+              ModalRoute.of(context)!.settings.arguments
+                  as Map<String, dynamic>;
           return WaitingRoomScreen(
             roomId: args['roomId'],
             roomName: args['roomName'],
@@ -51,17 +57,17 @@ class WerewolfGame extends StatelessWidget {
           );
         },
         '/game': (context) {
-          final args = ModalRoute.of(context)!.settings.arguments as Map<String, String>;
+          final args =
+              ModalRoute.of(context)!.settings.arguments as Map<String, String>;
           return GameScreen(roomId: args['roomId']!);
         },
         '/result': (context) {
-          final args = ModalRoute.of(context)!.settings.arguments as Map<String, dynamic>;
-          return ResultScreen(
-            winner: args['winner'],
-            players: args['players'],
-          );
+          final args =
+              ModalRoute.of(context)!.settings.arguments
+                  as Map<String, dynamic>;
+          return ResultScreen(winner: args['winner'], players: args['players']);
         },
-      }
+      },
     );
   }
 }

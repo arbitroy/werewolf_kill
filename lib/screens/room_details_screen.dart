@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import '../providers/game_provider.dart';
 import '../providers/room_provider.dart';
 import '../providers/auth_provider.dart';
 import '../core/models/room.dart';
@@ -79,9 +80,7 @@ class _RoomDetailsScreenState extends State<RoomDetailsScreen> {
 
           if (isLoading && players.isEmpty) {
             return Center(
-              child: CircularProgressIndicator(
-                color: Color(0xFFD4AF37),
-              ),
+              child: CircularProgressIndicator(color: Color(0xFFD4AF37)),
             );
           }
 
@@ -90,11 +89,7 @@ class _RoomDetailsScreenState extends State<RoomDetailsScreen> {
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  Icon(
-                    Icons.error_outline,
-                    size: 64,
-                    color: Color(0xFF8B0000),
-                  ),
+                  Icon(Icons.error_outline, size: 64, color: Color(0xFF8B0000)),
                   SizedBox(height: 16),
                   Text(
                     'Error loading room',
@@ -107,9 +102,7 @@ class _RoomDetailsScreenState extends State<RoomDetailsScreen> {
                   SizedBox(height: 8),
                   Text(
                     error,
-                    style: TextStyle(
-                      color: Color(0xFFC0C0D8).withOpacity(0.6),
-                    ),
+                    style: TextStyle(color: Color(0xFFC0C0D8).withOpacity(0.6)),
                     textAlign: TextAlign.center,
                   ),
                   SizedBox(height: 24),
@@ -140,10 +133,7 @@ class _RoomDetailsScreenState extends State<RoomDetailsScreen> {
                       gradient: LinearGradient(
                         begin: Alignment.topLeft,
                         end: Alignment.bottomRight,
-                        colors: [
-                          Color(0xFF1A0F2E),
-                          Color(0xFF2A1F3E),
-                        ],
+                        colors: [Color(0xFF1A0F2E), Color(0xFF2A1F3E)],
                       ),
                       borderRadius: BorderRadius.circular(16),
                       border: Border.all(
@@ -243,13 +233,10 @@ class _RoomDetailsScreenState extends State<RoomDetailsScreen> {
 
                 // Players List
                 SliverList(
-                  delegate: SliverChildBuilderDelegate(
-                    (context, index) {
-                      final player = players[index];
-                      return _buildPlayerTile(player);
-                    },
-                    childCount: players.length,
-                  ),
+                  delegate: SliverChildBuilderDelegate((context, index) {
+                    final player = players[index];
+                    return _buildPlayerTile(player);
+                  }, childCount: players.length),
                 ),
 
                 // Empty State
@@ -343,11 +330,7 @@ class _RoomDetailsScreenState extends State<RoomDetailsScreen> {
   Widget _buildInfoItem(String label, String value, IconData icon) {
     return Column(
       children: [
-        Icon(
-          icon,
-          color: Color(0xFFC0C0D8).withOpacity(0.6),
-          size: 24,
-        ),
+        Icon(icon, color: Color(0xFFC0C0D8).withOpacity(0.6), size: 24),
         SizedBox(height: 4),
         Text(
           label,
@@ -385,7 +368,7 @@ class _RoomDetailsScreenState extends State<RoomDetailsScreen> {
         ),
         borderRadius: BorderRadius.circular(12),
         border: Border.all(
-          color: isMe 
+          color: isMe
               ? Color(0xFFD4AF37).withOpacity(0.5)
               : Color(0xFFC0C0D8).withOpacity(0.2),
           width: 1,
@@ -463,10 +446,7 @@ class _RoomDetailsScreenState extends State<RoomDetailsScreen> {
                 decoration: BoxDecoration(
                   color: Color(0xFFD4AF37).withOpacity(0.2),
                   borderRadius: BorderRadius.circular(20),
-                  border: Border.all(
-                    color: Color(0xFFD4AF37),
-                    width: 1,
-                  ),
+                  border: Border.all(color: Color(0xFFD4AF37), width: 1),
                 ),
                 child: Text(
                   'HOST',
@@ -515,10 +495,7 @@ class _RoomDetailsScreenState extends State<RoomDetailsScreen> {
                 ),
                 child: Text(
                   'Leave Room',
-                  style: TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.bold,
-                  ),
+                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
                 ),
               ),
             ),
@@ -536,10 +513,7 @@ class _RoomDetailsScreenState extends State<RoomDetailsScreen> {
                   ),
                   child: Text(
                     room?.canStart == true ? 'Start Game' : 'Need 3+ Players',
-                    style: TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.bold,
-                    ),
+                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
                   ),
                 ),
               ),
@@ -568,23 +542,18 @@ class _RoomDetailsScreenState extends State<RoomDetailsScreen> {
   void _leaveRoom() async {
     final roomProvider = Provider.of<RoomProvider>(context, listen: false);
     final authProvider = Provider.of<AuthProvider>(context, listen: false);
-    
+
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
         backgroundColor: Color(0xFF1A0F2E),
         title: Text(
           'Leave Room?',
-          style: TextStyle(
-            fontFamily: 'Cinzel',
-            color: Color(0xFFC0C0D8),
-          ),
+          style: TextStyle(fontFamily: 'Cinzel', color: Color(0xFFC0C0D8)),
         ),
         content: Text(
           'Are you sure you want to leave this room?',
-          style: TextStyle(
-            color: Color(0xFFC0C0D8).withOpacity(0.7),
-          ),
+          style: TextStyle(color: Color(0xFFC0C0D8).withOpacity(0.7)),
         ),
         actions: [
           TextButton(
@@ -593,21 +562,33 @@ class _RoomDetailsScreenState extends State<RoomDetailsScreen> {
           ),
           ElevatedButton(
             onPressed: () => Navigator.pop(context, true),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Color(0xFF8B0000),
-            ),
+            style: ElevatedButton.styleFrom(backgroundColor: Color(0xFF8B0000)),
             child: Text('Leave'),
           ),
         ],
       ),
     );
 
-    if (confirmed == true) {
-      await roomProvider.leaveRoom(
-        widget.roomId,
-        authProvider.currentUser!.id,
-      );
-      Navigator.pop(context);
+    if (confirmed == true && mounted) {
+      // ✅ Proper leave flow
+      final gameProvider = Provider.of<GameProvider>(context, listen: false);
+
+      // If connected via WebSocket, use that
+      if (gameProvider.isConnected &&
+          gameProvider.currentRoomId == widget.roomId) {
+        await gameProvider.leaveRoom();
+      } else {
+        // Otherwise, just call REST API for cleanup
+        final roomProvider = Provider.of<RoomProvider>(context, listen: false);
+        await roomProvider.leaveRoom(
+          widget.roomId,
+          authProvider.currentUser!.id,
+        );
+      }
+
+      if (mounted) {
+        Navigator.pop(context);
+      }
     }
   }
 
@@ -616,9 +597,7 @@ class _RoomDetailsScreenState extends State<RoomDetailsScreen> {
     Navigator.pushReplacementNamed(
       context,
       '/game',
-      arguments: {
-        'roomId': widget.roomId,
-      },
+      arguments: {'roomId': widget.roomId},
     );
   }
 }

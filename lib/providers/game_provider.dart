@@ -30,6 +30,10 @@ class GameProvider with ChangeNotifier {
     _setupWebSocketCallbacks();
   }
 
+  void setToken(String token) {
+    _apiService.setToken(token);
+  }
+
   void _setupWebSocketCallbacks() {
     // Connection state changes
     _wsService.onConnectionStateChanged = (state) {
@@ -324,6 +328,31 @@ class GameProvider with ChangeNotifier {
     notifyListeners();
   }
 
+  Future<void> leaveRoom() async {
+    if (_currentRoomId == null) return;
+
+    print('🚪 Leaving room: $_currentRoomId');
+
+    try {
+      // 1. Send WebSocket leave message BEFORE disconnecting
+      if (_wsService.isConnected) {
+        _wsService.sendLeaveRoom(_currentRoomId!);
+
+        // 2. Wait a moment for message to be sent
+        await Future.delayed(Duration(milliseconds: 200));
+      }
+
+      // 3. Now disconnect WebSocket
+      disconnectFromRoom();
+
+      print('✅ Successfully left room');
+    } catch (e) {
+      print('❌ Error leaving room: $e');
+      // Still disconnect even if leave message failed
+      disconnectFromRoom();
+    }
+  }
+
   // ✅ Disconnect from WebSocket
   void disconnectFromRoom() {
     print('🔌 Disconnecting from room');
@@ -336,10 +365,12 @@ class GameProvider with ChangeNotifier {
   }
 
   // Start game (REST API call, server will broadcast via WebSocket)
-  Future<bool> startGame() async {
+  // Start game with retry logic for session creation issues
+  Future<bool> startGame({int retryCount = 0, int maxRetries = 3}) async {
     if (_currentRoomId == null) return false;
 
     _isLoading = true;
+    _error = null;
     notifyListeners();
 
     try {
@@ -348,8 +379,30 @@ class GameProvider with ChangeNotifier {
       notifyListeners();
       return true;
     } catch (e) {
-      print('❌ Failed to start game: $e');
-      _error = e.toString();
+      print(
+        '❌ Failed to start game (attempt ${retryCount + 1}/$maxRetries): $e',
+      );
+
+      String errorMsg = e.toString();
+
+      // ✅ FIX: Detect session-not-found errors and retry
+      bool isSessionError =
+          errorMsg.contains('No active session') ||
+          errorMsg.contains('WebSocket') ||
+          errorMsg.contains('Session not found');
+
+      if (isSessionError && retryCount < maxRetries) {
+        print('🔄 Retrying start game in ${(retryCount + 1) * 500}ms...');
+
+        // Exponential backoff: 500ms, 1000ms, 1500ms
+        await Future.delayed(Duration(milliseconds: (retryCount + 1) * 500));
+
+        return startGame(retryCount: retryCount + 1, maxRetries: maxRetries);
+      }
+
+      _error = isSessionError
+          ? 'Connection not ready. Please ensure all players have joined.'
+          : errorMsg.replaceAll('Exception: ', '');
       _isLoading = false;
       notifyListeners();
       return false;
