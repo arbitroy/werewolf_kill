@@ -35,6 +35,12 @@ class WebSocketService {
   Function(Map<String, dynamic>)? onPlayerDied;
   Function(ConnectionState)? onConnectionStateChanged;
   Function(String)? onError;
+  Function(Map<String, dynamic>)? onActionConfirmed;
+  Function(Map<String, dynamic>)? onSeerResult;
+  Function(Map<String, dynamic>)? onWerewolfVote;
+  Function(Map<String, dynamic>)? onVoteCountUpdate;
+  Function(Map<String, dynamic>)? onNightResult;
+  Function(Map<String, dynamic>)? onVoteResult;
 
   ConnectionState get connectionState => _connectionState;
   bool get isConnected => _connectionState == ConnectionState.connected;
@@ -233,8 +239,13 @@ class WebSocketService {
       final data = jsonDecode(frame.body!);
       final type = data['type'] as String?;
 
+      print('🎭 Role message type: $type');
+
       if (type == 'ROLE_ASSIGNED') {
         onRoleAssigned?.call(data);
+      } else if (type == 'SEER_RESULT') {
+        // ✅ NEW: Handle seer investigation results
+        onSeerResult?.call(data);
       }
     } catch (e) {
       print('❌ Error parsing role message: $e');
@@ -246,7 +257,7 @@ class WebSocketService {
       final data = jsonDecode(frame.body!);
       final type = data['type'] as String?;
 
-      print('📩 Room message type: $type');
+      print('📨 Room message type: $type');
 
       switch (type) {
         case 'ROOM_STATE_UPDATE':
@@ -264,12 +275,44 @@ class WebSocketService {
         case 'GAME_STARTED':
           onGameStarted?.call(data);
           break;
+        case 'PHASE_CHANGE':
+          onPhaseChange?.call(data);
+          break;
+        case 'VOTE_CAST':
+          onVoteCast?.call(data);
+          break;
+        case 'PLAYER_DIED':
+          onPlayerDied?.call(data);
+          break;
+        case 'GAME_OVER':
+          onGameUpdate?.call(data);
+          break;
+        // ✅ NEW: Add these cases
+        case 'ACTION_CONFIRMED':
+          onActionConfirmed?.call(data);
+          break;
+        case 'WEREWOLF_VOTE':
+          onWerewolfVote?.call(data);
+          break;
+        case 'VOTE_COUNT_UPDATE':
+          onVoteCountUpdate?.call(data);
+          break;
+        case 'NIGHT_RESULT':
+          onNightResult?.call(data);
+          break;
+        case 'VOTE_RESULT':
+          onVoteResult?.call(data);
+          break;
+        case 'ERROR':
+          final message = data['message'] as String?;
+          print('❌ Server error: $message');
+          onError?.call(message ?? 'Unknown error');
+          break;
         default:
-          print('⚠️ Unknown room message type: $type');
+          print('⚠️ Unknown message type: $type');
       }
     } catch (e) {
       print('❌ Error parsing room message: $e');
-      onError?.call('Failed to parse room message: $e');
     }
   }
 
@@ -372,5 +415,48 @@ class WebSocketService {
     _currentPlayerId = null;
     _currentUsername = null;
     _currentConnectionUrl = null;
+  }
+
+  /// Send night action to server
+  void sendNightAction(
+    String roomId,
+    String actorId,
+    String targetId,
+    String action,
+  ) {
+    if (!isConnected) {
+      print('⚠️ Cannot send night action: not connected');
+      return;
+    }
+
+    print('📤 Sending night action: $action by $actorId on $targetId');
+
+    final payload = {
+      'actorId': actorId,
+      'targetId': targetId,
+      'action': action,
+    };
+
+    _client?.send(
+      destination: '/app/game/$roomId/action',
+      body: jsonEncode(payload),
+    );
+  }
+
+  /// Send vote to server
+  void sendVote(String roomId, String voterId, String targetId) {
+    if (!isConnected) {
+      print('⚠️ Cannot send vote: not connected');
+      return;
+    }
+
+    print('📤 Sending vote: $voterId → $targetId');
+
+    final payload = {'voterId': voterId, 'targetId': targetId};
+
+    _client?.send(
+      destination: '/app/game/$roomId/vote',
+      body: jsonEncode(payload),
+    );
   }
 }

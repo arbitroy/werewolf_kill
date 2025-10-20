@@ -15,6 +15,12 @@ class GameProvider with ChangeNotifier {
   String? _currentRoomId;
   Player? _myPlayer;
   ConnectionState _wsConnectionState = ConnectionState.disconnected;
+  String? _selectedTargetId;
+  bool _hasActedTonight = false;
+  bool _hasVoted = false;
+  Map<String, int> _voteCount = {};
+  String? _lastActionResult;
+  String? _seerResult;
 
   // Getters
   GameState? get gameState => _gameState;
@@ -25,6 +31,12 @@ class GameProvider with ChangeNotifier {
   Player? get myPlayer => _myPlayer;
   ConnectionState get wsConnectionState => _wsConnectionState;
   bool get isConnected => _wsConnectionState == ConnectionState.connected;
+  String? get selectedTargetId => _selectedTargetId;
+  bool get hasActedTonight => _hasActedTonight;
+  bool get hasVoted => _hasVoted;
+  Map<String, int> get voteCount => _voteCount;
+  String? get lastActionResult => _lastActionResult;
+  String? get seerResult => _seerResult;
 
   GameProvider() {
     _setupWebSocketCallbacks();
@@ -125,6 +137,110 @@ class GameProvider with ChangeNotifier {
     _wsService.onError = (errorMsg) {
       print('❌ WebSocket error: $errorMsg');
       _error = errorMsg;
+      notifyListeners();
+    };
+
+    // ✅ NEW: Action confirmation callback
+    _wsService.onActionConfirmed = (data) {
+      print('✅ Action confirmed: ${data['action']}');
+      _hasActedTonight = true;
+      _lastActionResult = 'Action confirmed!';
+      notifyListeners();
+
+      // Clear message after 3 seconds
+      Future.delayed(Duration(seconds: 3), () {
+        _lastActionResult = null;
+        notifyListeners();
+      });
+    };
+
+    // ✅ NEW: Seer result callback
+    _wsService.onSeerResult = (data) {
+      print('🔮 Seer result received');
+      final targetName = data['targetName'] as String?;
+      final isWerewolf = data['isWerewolf'] as bool?;
+
+      if (targetName != null && isWerewolf != null) {
+        _seerResult = isWerewolf
+            ? '🐺 $targetName is a WEREWOLF!'
+            : '✅ $targetName is NOT a werewolf';
+        _hasActedTonight = true;
+        notifyListeners();
+
+        // Clear after 5 seconds
+        Future.delayed(Duration(seconds: 5), () {
+          _seerResult = null;
+          notifyListeners();
+        });
+      }
+    };
+
+    // ✅ NEW: Werewolf vote callback (for werewolves to see each other's votes)
+    _wsService.onWerewolfVote = (data) {
+      print('🐺 Werewolf vote: ${data['voterName']} → ${data['targetId']}');
+      notifyListeners();
+    };
+
+    // ✅ NEW: Vote count update callback
+    _wsService.onVoteCountUpdate = (data) {
+      print('🗳️ Vote count updated');
+      final votesReceived = data['votesReceived'] as int?;
+      final totalPlayers = data['totalPlayers'] as int?;
+
+      if (votesReceived != null && totalPlayers != null) {
+        print('   $votesReceived/$totalPlayers players have voted');
+      }
+      notifyListeners();
+    };
+
+    // ✅ NEW: Night result callback
+    _wsService.onNightResult = (data) {
+      print('🌙 Night result: ${data['message']}');
+      _lastActionResult = data['message'] as String?;
+      notifyListeners();
+
+      // Clear after 5 seconds
+      Future.delayed(Duration(seconds: 5), () {
+        _lastActionResult = null;
+        notifyListeners();
+      });
+    };
+
+    // ✅ NEW: Vote result callback
+    _wsService.onVoteResult = (data) {
+      print('🗳️ Vote result: ${data['message']}');
+      _lastActionResult = data['message'] as String?;
+      notifyListeners();
+
+      // Clear after 5 seconds
+      Future.delayed(Duration(seconds: 5), () {
+        _lastActionResult = null;
+        notifyListeners();
+      });
+    };
+
+    // ✅ UPDATE: Enhanced phase change handler
+    _wsService.onPhaseChange = (data) {
+      print('🌓 Phase changed to: ${data['phase']}');
+
+      // Reset action flags on phase change
+      if (data['phase'] == 'NIGHT') {
+        _hasActedTonight = false;
+        _hasVoted = false;
+      } else if (data['phase'] == 'VOTING') {
+        _hasVoted = false;
+      }
+
+      if (_gameState != null) {
+        _gameState = GameState(
+          roomId: _gameState!.roomId,
+          phase: data['phase'],
+          dayNumber: data['dayNumber'] ?? _gameState!.dayNumber,
+          isActive: true,
+        );
+      }
+
+      _selectedTargetId = null;
       notifyListeners();
     };
   }
@@ -407,6 +523,157 @@ class GameProvider with ChangeNotifier {
       notifyListeners();
       return false;
     }
+  }
+
+  /// Submit night action (werewolf kill, seer check, doctor protect)
+  Future<void> submitNightAction(String targetId) async {
+    if (_currentRoomId == null || _myPlayer == null) {
+      _error = 'Not in a game';
+      notifyListeners();
+      return;
+    }
+
+    if (_hasActedTonight) {
+      _error = 'You have already acted tonight';
+      notifyListeners();
+      return;
+    }
+
+    try {
+      // Determine action type based on role
+      String action;
+      switch (_myPlayer!.role?.toUpperCase()) {
+        case 'WEREWOLF':
+          action = 'WEREWOLF_KILL';
+          break;
+        case 'SEER':
+          action = 'SEER_CHECK';
+          break;
+        case 'DOCTOR':
+          action = 'DOCTOR_PROTECT';
+          break;
+        default:
+          _error = 'Your role cannot perform night actions';
+          notifyListeners();
+          return;
+      }
+
+      print('🌙 Submitting night action: $action on $targetId');
+
+      _wsService.sendNightAction(
+        _currentRoomId!,
+        _myPlayer!.id,
+        targetId,
+        action,
+      );
+
+      _selectedTargetId = targetId;
+      _error = null;
+      notifyListeners();
+    } catch (e) {
+      print('❌ Error submitting night action: $e');
+      _error = e.toString();
+      notifyListeners();
+    }
+  }
+
+  /// Submit vote during voting phase
+  Future<void> submitVote(String targetId) async {
+    if (_currentRoomId == null || _myPlayer == null) {
+      _error = 'Not in a game';
+      notifyListeners();
+      return;
+    }
+
+    if (_hasVoted) {
+      _error = 'You have already voted';
+      notifyListeners();
+      return;
+    }
+
+    try {
+      print('🗳️ Submitting vote for: $targetId');
+
+      _wsService.sendVote(_currentRoomId!, _myPlayer!.id, targetId);
+
+      _selectedTargetId = targetId;
+      _hasVoted = true;
+      _error = null;
+      notifyListeners();
+    } catch (e) {
+      print('❌ Error submitting vote: $e');
+      _error = e.toString();
+      notifyListeners();
+    }
+  }
+
+  /// Select a target player (UI selection, not submitted yet)
+  void selectTarget(String playerId) {
+    _selectedTargetId = playerId;
+    notifyListeners();
+  }
+
+  /// Clear selected target
+  void clearTarget() {
+    _selectedTargetId = null;
+    notifyListeners();
+  }
+
+  /// Check if a player can be targeted
+  bool canTarget(String playerId) {
+    if (_myPlayer == null) return false;
+    if (_myPlayer!.id == playerId) return false; // Can't target self
+
+    final targetPlayer = _players.firstWhere(
+      (p) => p.id == playerId,
+      orElse: () => Player(id: '', username: '', isHost: false),
+    );
+
+    if (targetPlayer.id.isEmpty) return false;
+    if (!targetPlayer.isAlive) return false; // Can't target dead players
+
+    return true;
+  }
+
+  /// Get action button text based on role and phase
+  String getActionButtonText() {
+    if (_myPlayer == null) return 'Wait...';
+
+    if (_gameState?.isNightPhase == true) {
+      if (_hasActedTonight) return 'Acted';
+
+      switch (_myPlayer!.role?.toUpperCase()) {
+        case 'WEREWOLF':
+          return _selectedTargetId != null ? 'Attack' : 'Select Target';
+        case 'SEER':
+          return _selectedTargetId != null ? 'Investigate' : 'Select Target';
+        case 'DOCTOR':
+          return _selectedTargetId != null ? 'Protect' : 'Select Target';
+        default:
+          return 'Wait...';
+      }
+    } else if (_gameState?.isVotingPhase == true) {
+      if (_hasVoted) return 'Voted';
+      return _selectedTargetId != null ? 'Cast Vote' : 'Select Player';
+    }
+
+    return 'Wait...';
+  }
+
+  /// Check if action button should be enabled
+  bool canSubmitAction() {
+    if (_myPlayer == null || _gameState == null) return false;
+    if (_selectedTargetId == null) return false;
+
+    if (_gameState!.isNightPhase) {
+      if (_hasActedTonight) return false;
+      return _myPlayer!.role != null &&
+          _myPlayer!.role!.toUpperCase() != 'VILLAGER';
+    } else if (_gameState!.isVotingPhase) {
+      return !_hasVoted;
+    }
+
+    return false;
   }
 
   void clearError() {

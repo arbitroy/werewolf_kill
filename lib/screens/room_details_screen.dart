@@ -1,19 +1,19 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/game_provider.dart';
-import '../providers/room_provider.dart';
 import '../providers/auth_provider.dart';
-import '../core/models/room.dart';
 import '../core/models/player.dart';
 
 class RoomDetailsScreen extends StatefulWidget {
   final String roomId;
   final String roomName;
+  final bool isHost;
 
   const RoomDetailsScreen({
     Key? key,
     required this.roomId,
     required this.roomName,
+    this.isHost = false,
   }) : super(key: key);
 
   @override
@@ -24,13 +24,40 @@ class _RoomDetailsScreenState extends State<RoomDetailsScreen> {
   @override
   void initState() {
     super.initState();
-    _loadRoomDetails();
+    // Connect to WebSocket for real-time updates
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _connectToRoom();
+    });
   }
 
-  Future<void> _loadRoomDetails() async {
-    final roomProvider = Provider.of<RoomProvider>(context, listen: false);
-    await roomProvider.getRoomDetails(widget.roomId);
-    await roomProvider.getRoomPlayers(widget.roomId);
+  void _connectToRoom() {
+    final gameProvider = Provider.of<GameProvider>(context, listen: false);
+    final authProvider = Provider.of<AuthProvider>(context, listen: false);
+
+    if (authProvider.currentUser != null) {
+      final myPlayer = Player(
+        id: authProvider.currentUser!.id,
+        username: authProvider.currentUser!.username,
+        isHost: widget.isHost,
+      );
+
+      print('🔵 RoomDetails: Connecting to room via WebSocket: ${widget.roomId}');
+      gameProvider.connectToRoom(widget.roomId, myPlayer);
+    }
+  }
+
+  @override
+  void dispose() {
+    // Disconnect WebSocket when leaving screen
+    try {
+      if (mounted) {
+        final gameProvider = context.read<GameProvider>();
+        gameProvider.disconnectFromRoom();
+      }
+    } catch (e) {
+      print('Provider already disposed: $e');
+    }
+    super.dispose();
   }
 
   @override
@@ -62,217 +89,193 @@ class _RoomDetailsScreenState extends State<RoomDetailsScreen> {
         ),
         actions: [
           IconButton(
-            icon: Icon(Icons.refresh, color: Color(0xFFC0C0D8)),
-            onPressed: _loadRoomDetails,
-          ),
-          IconButton(
             icon: Icon(Icons.share, color: Color(0xFFC0C0D8)),
             onPressed: _shareRoomId,
           ),
         ],
       ),
-      body: Consumer<RoomProvider>(
-        builder: (context, roomProvider, child) {
-          final room = roomProvider.currentRoom;
-          final players = roomProvider.roomPlayers;
-          final isLoading = roomProvider.isLoading;
-          final error = roomProvider.error;
+      body: Consumer<GameProvider>(
+        builder: (context, gameProvider, child) {
+          final players = gameProvider.players;
+          final isConnected = gameProvider.isConnected;
+          final authProvider = Provider.of<AuthProvider>(context, listen: false);
+          final myPlayerId = authProvider.currentUser?.id;
 
-          if (isLoading && players.isEmpty) {
-            return Center(
-              child: CircularProgressIndicator(color: Color(0xFFD4AF37)),
-            );
-          }
+          // Determine if current user is host
+          final myPlayer = players.firstWhere(
+            (p) => p.id == myPlayerId,
+            orElse: () => Player(
+              id: myPlayerId ?? '',
+              username: authProvider.currentUser?.username ?? 'Unknown',
+              isHost: false,
+            ),
+          );
+          final amIHost = myPlayer.isHost;
 
-          if (error != null) {
-            return Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(Icons.error_outline, size: 64, color: Color(0xFF8B0000)),
-                  SizedBox(height: 16),
-                  Text(
-                    'Error loading room',
-                    style: TextStyle(
-                      fontFamily: 'Cinzel',
-                      fontSize: 18,
-                      color: Color(0xFFC0C0D8),
+          return CustomScrollView(
+            slivers: [
+              // Connection Status
+              SliverToBoxAdapter(
+                child: Container(
+                  margin: EdgeInsets.all(16),
+                  padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                  decoration: BoxDecoration(
+                    color: isConnected 
+                        ? Color(0xFF2E7D32).withOpacity(0.2)
+                        : Color(0xFF8B0000).withOpacity(0.2),
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(
+                      color: isConnected ? Color(0xFF2E7D32) : Color(0xFF8B0000),
+                      width: 1,
                     ),
                   ),
-                  SizedBox(height: 8),
-                  Text(
-                    error,
-                    style: TextStyle(color: Color(0xFFC0C0D8).withOpacity(0.6)),
-                    textAlign: TextAlign.center,
-                  ),
-                  SizedBox(height: 24),
-                  ElevatedButton(
-                    onPressed: _loadRoomDetails,
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Color(0xFF2E7D32),
-                    ),
-                    child: Text('Retry'),
-                  ),
-                ],
-              ),
-            );
-          }
-
-          return RefreshIndicator(
-            onRefresh: _loadRoomDetails,
-            color: Color(0xFFD4AF37),
-            backgroundColor: Color(0xFF1A0F2E),
-            child: CustomScrollView(
-              slivers: [
-                // Room Info Card
-                SliverToBoxAdapter(
-                  child: Container(
-                    margin: EdgeInsets.all(16),
-                    padding: EdgeInsets.all(20),
-                    decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        begin: Alignment.topLeft,
-                        end: Alignment.bottomRight,
-                        colors: [Color(0xFF1A0F2E), Color(0xFF2A1F3E)],
-                      ),
-                      borderRadius: BorderRadius.circular(16),
-                      border: Border.all(
-                        color: Color(0xFFD4AF37).withOpacity(0.3),
-                        width: 1,
-                      ),
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.black.withOpacity(0.3),
-                          blurRadius: 10,
-                          offset: Offset(0, 5),
-                        ),
-                      ],
-                    ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            Text(
-                              'Room Status',
-                              style: TextStyle(
-                                fontFamily: 'Cinzel',
-                                fontSize: 16,
-                                color: Color(0xFFD4AF37),
-                              ),
-                            ),
-                            _buildStatusChip(room?.status ?? 'WAITING'),
-                          ],
-                        ),
-                        SizedBox(height: 16),
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            _buildInfoItem(
-                              'Players',
-                              '${room?.currentPlayers ?? 0}/${room?.maxPlayers ?? 8}',
-                              Icons.people,
-                            ),
-                            _buildInfoItem(
-                              'Min to Start',
-                              '3 players',
-                              Icons.flag,
-                            ),
-                          ],
-                        ),
-                        if (room?.canStart == true && players.length >= 3)
-                          Container(
-                            margin: EdgeInsets.only(top: 16),
-                            padding: EdgeInsets.all(12),
-                            decoration: BoxDecoration(
-                              color: Color(0xFF2E7D32).withOpacity(0.2),
-                              borderRadius: BorderRadius.circular(8),
-                              border: Border.all(
-                                color: Color(0xFF2E7D32),
-                                width: 1,
-                              ),
-                            ),
-                            child: Row(
-                              children: [
-                                Icon(
-                                  Icons.check_circle,
-                                  color: Color(0xFF2E7D32),
-                                  size: 20,
-                                ),
-                                SizedBox(width: 8),
-                                Text(
-                                  'Ready to start!',
-                                  style: TextStyle(
-                                    color: Color(0xFF2E7D32),
-                                    fontWeight: FontWeight.bold,
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Container(
+                        width: 8,
+                        height: 8,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          color: isConnected ? Colors.green : Colors.red,
+                          boxShadow: isConnected
+                              ? [
+                                  BoxShadow(
+                                    color: Colors.green.withOpacity(0.5),
+                                    blurRadius: 8,
+                                    spreadRadius: 2,
                                   ),
-                                ),
-                              ],
-                            ),
-                          ),
-                      ],
-                    ),
-                  ),
-                ),
-
-                // Players List Header
-                SliverToBoxAdapter(
-                  child: Padding(
-                    padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                    child: Text(
-                      'Players (${players.length})',
-                      style: TextStyle(
-                        fontFamily: 'Cinzel',
-                        fontSize: 18,
-                        color: Color(0xFFD4AF37),
+                                ]
+                              : [],
+                        ),
                       ),
-                    ),
+                      SizedBox(width: 8),
+                      Text(
+                        isConnected ? 'Connected - Live Updates' : 'Connecting...',
+                        style: TextStyle(
+                          color: Color(0xFFC0C0D8).withOpacity(0.9),
+                          fontSize: 12,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    ],
                   ),
                 ),
+              ),
 
-                // Players List
-                SliverList(
-                  delegate: SliverChildBuilderDelegate((context, index) {
-                    final player = players[index];
-                    return _buildPlayerTile(player);
-                  }, childCount: players.length),
-                ),
-
-                // Empty State
-                if (players.isEmpty)
-                  SliverFillRemaining(
-                    child: Center(
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
+              // Room Info Card
+              SliverToBoxAdapter(
+                child: Container(
+                  margin: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                  padding: EdgeInsets.all(20),
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                      colors: [Color(0xFF1A0F2E), Color(0xFF2A1F3E)],
+                    ),
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(
+                      color: Color(0xFFD4AF37).withOpacity(0.3),
+                      width: 1,
+                    ),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withOpacity(0.3),
+                        blurRadius: 10,
+                        offset: Offset(0, 5),
+                      ),
+                    ],
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
-                          Icon(
-                            Icons.people_outline,
-                            size: 64,
-                            color: Color(0xFFC0C0D8).withOpacity(0.3),
-                          ),
-                          SizedBox(height: 16),
                           Text(
-                            'No players yet',
+                            'Room Status',
                             style: TextStyle(
                               fontFamily: 'Cinzel',
-                              fontSize: 18,
-                              color: Color(0xFFC0C0D8).withOpacity(0.5),
+                              fontSize: 16,
+                              color: Color(0xFFD4AF37),
                             ),
                           ),
-                          Text(
-                            'Waiting for players to join...',
-                            style: TextStyle(
-                              fontSize: 14,
-                              color: Color(0xFFC0C0D8).withOpacity(0.3),
-                            ),
+                          _buildStatusChip('WAITING'),
+                        ],
+                      ),
+                      SizedBox(height: 16),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceAround,
+                        children: [
+                          _buildInfoItem(
+                            'Players',
+                            '${players.length}/8',
+                            Icons.people,
+                          ),
+                          _buildInfoItem(
+                            'Status',
+                            players.length >= 3 ? 'Ready' : 'Waiting',
+                            Icons.check_circle,
                           ),
                         ],
                       ),
+                    ],
+                  ),
+                ),
+              ),
+
+              // Players List Header
+              SliverToBoxAdapter(
+                child: Padding(
+                  padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                  child: Text(
+                    'Players (${players.length})',
+                    style: TextStyle(
+                      fontFamily: 'Cinzel',
+                      fontSize: 18,
+                      color: Color(0xFFD4AF37),
                     ),
                   ),
-              ],
-            ),
+                ),
+              ),
+
+              // Players List
+              if (players.isEmpty)
+                SliverFillRemaining(
+                  child: Center(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        CircularProgressIndicator(color: Color(0xFFD4AF37)),
+                        SizedBox(height: 16),
+                        Text(
+                          'Waiting for players to connect...',
+                          style: TextStyle(
+                            color: Color(0xFFC0C0D8).withOpacity(0.7),
+                            fontSize: 16,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                )
+              else
+                SliverList(
+                  delegate: SliverChildBuilderDelegate(
+                    (context, index) {
+                      final player = players[index];
+                      return _buildPlayerTile(player, myPlayerId);
+                    },
+                    childCount: players.length,
+                  ),
+                ),
+
+              // Bottom padding for button
+              SliverToBoxAdapter(
+                child: SizedBox(height: 100),
+              ),
+            ],
           );
         },
       ),
@@ -284,22 +287,18 @@ class _RoomDetailsScreenState extends State<RoomDetailsScreen> {
     Color color;
     IconData icon;
 
-    switch (status) {
+    switch (status.toUpperCase()) {
       case 'WAITING':
-        color = Color(0xFFFFA500);
+        color = Colors.orange;
         icon = Icons.hourglass_empty;
         break;
-      case 'IN_PROGRESS':
+      case 'ACTIVE':
         color = Color(0xFF2E7D32);
-        icon = Icons.play_arrow;
-        break;
-      case 'FINISHED':
-        color = Color(0xFF8B0000);
-        icon = Icons.done;
+        icon = Icons.play_circle;
         break;
       default:
-        color = Color(0xFFC0C0D8);
-        icon = Icons.help_outline;
+        color = Colors.grey;
+        icon = Icons.info;
     }
 
     return Container(
@@ -351,9 +350,8 @@ class _RoomDetailsScreenState extends State<RoomDetailsScreen> {
     );
   }
 
-  Widget _buildPlayerTile(Player player) {
-    final authProvider = Provider.of<AuthProvider>(context, listen: false);
-    final isMe = player.id == authProvider.currentUser?.id;
+  Widget _buildPlayerTile(Player player, String? myPlayerId) {
+    final isMe = player.id == myPlayerId;
 
     return Container(
       margin: EdgeInsets.symmetric(horizontal: 16, vertical: 6),
@@ -377,69 +375,38 @@ class _RoomDetailsScreenState extends State<RoomDetailsScreen> {
       child: ListTile(
         leading: CircleAvatar(
           backgroundColor: Color(0xFF2A1F3E),
-          child: player.avatarUrl != null
-              ? ClipOval(
-                  child: Image.network(
-                    player.avatarUrl!,
-                    fit: BoxFit.cover,
-                    errorBuilder: (context, error, stackTrace) {
-                      return Text(
-                        player.username[0].toUpperCase(),
-                        style: TextStyle(
-                          color: Color(0xFFC0C0D8),
-                          fontWeight: FontWeight.bold,
-                        ),
-                      );
-                    },
-                  ),
-                )
-              : Text(
-                  player.username[0].toUpperCase(),
-                  style: TextStyle(
-                    color: Color(0xFFC0C0D8),
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
+          child: Text(
+            player.username[0].toUpperCase(),
+            style: TextStyle(
+              color: Color(0xFFD4AF37),
+              fontWeight: FontWeight.bold,
+            ),
+          ),
         ),
         title: Row(
           children: [
             Text(
               player.username,
               style: TextStyle(
-                fontFamily: 'Lora',
+                fontFamily: 'Cinzel',
                 fontSize: 16,
                 color: Color(0xFFC0C0D8),
                 fontWeight: isMe ? FontWeight.bold : FontWeight.normal,
               ),
             ),
-            if (isMe)
-              Container(
-                margin: EdgeInsets.only(left: 8),
-                padding: EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                decoration: BoxDecoration(
-                  color: Color(0xFFD4AF37).withOpacity(0.2),
-                  borderRadius: BorderRadius.circular(10),
-                ),
-                child: Text(
-                  'You',
-                  style: TextStyle(
-                    fontSize: 10,
-                    color: Color(0xFFD4AF37),
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-              ),
-          ],
-        ),
-        subtitle: player.role != null
-            ? Text(
-                player.role!,
+            if (isMe) ...[
+              SizedBox(width: 8),
+              Text(
+                '(You)',
                 style: TextStyle(
                   fontSize: 12,
-                  color: Color(0xFFC0C0D8).withOpacity(0.6),
+                  color: Color(0xFFD4AF37),
+                  fontStyle: FontStyle.italic,
                 ),
-              )
-            : null,
+              ),
+            ],
+          ],
+        ),
         trailing: player.isHost
             ? Container(
                 padding: EdgeInsets.symmetric(horizontal: 12, vertical: 6),
@@ -463,86 +430,97 @@ class _RoomDetailsScreenState extends State<RoomDetailsScreen> {
   }
 
   Widget _buildBottomBar() {
-    final authProvider = Provider.of<AuthProvider>(context, listen: false);
-    final roomProvider = Provider.of<RoomProvider>(context);
-    final room = roomProvider.currentRoom;
-    final isHost = room?.createdBy == authProvider.currentUser?.id;
-
-    return Container(
-      padding: EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Color(0xFF1A0F2E),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.3),
-            blurRadius: 10,
-            offset: Offset(0, -5),
+    return Consumer<GameProvider>(
+      builder: (context, gameProvider, child) {
+        final players = gameProvider.players;
+        final authProvider = Provider.of<AuthProvider>(context, listen: false);
+        final myPlayerId = authProvider.currentUser?.id;
+        
+        final myPlayer = players.firstWhere(
+          (p) => p.id == myPlayerId,
+          orElse: () => Player(
+            id: myPlayerId ?? '',
+            username: authProvider.currentUser?.username ?? 'Unknown',
+            isHost: false,
           ),
-        ],
-      ),
-      child: SafeArea(
-        child: Row(
-          children: [
-            Expanded(
-              child: ElevatedButton(
-                onPressed: () => _leaveRoom(),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Color(0xFF8B0000),
-                  padding: EdgeInsets.symmetric(vertical: 16),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                ),
-                child: Text(
-                  'Leave Room',
-                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-                ),
-              ),
-            ),
-            if (isHost) ...[
-              SizedBox(width: 16),
-              Expanded(
-                child: ElevatedButton(
-                  onPressed: (room?.canStart == true) ? _startGame : null,
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Color(0xFF2E7D32),
-                    padding: EdgeInsets.symmetric(vertical: 16),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                  ),
-                  child: Text(
-                    room?.canStart == true ? 'Start Game' : 'Need 3+ Players',
-                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-                  ),
-                ),
+        );
+        final amIHost = myPlayer.isHost;
+        final canStart = players.length >= 3;
+
+        return Container(
+          padding: EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: Color(0xFF1A0F2E),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.3),
+                blurRadius: 10,
+                offset: Offset(0, -5),
               ),
             ],
-          ],
-        ),
-      ),
+          ),
+          child: SafeArea(
+            child: Row(
+              children: [
+                Expanded(
+                  child: ElevatedButton(
+                    onPressed: _leaveRoom,
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Color(0xFF8B0000),
+                      padding: EdgeInsets.symmetric(vertical: 16),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                    ),
+                    child: Text(
+                      'Leave Room',
+                      style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                    ),
+                  ),
+                ),
+                if (amIHost) ...[
+                  SizedBox(width: 16),
+                  Expanded(
+                    child: ElevatedButton(
+                      onPressed: canStart ? _startGame : null,
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Color(0xFF2E7D32),
+                        padding: EdgeInsets.symmetric(vertical: 16),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                      ),
+                      child: Text(
+                        canStart ? 'Start Game' : 'Need 3+ Players',
+                        style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                      ),
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+        );
+      },
     );
   }
 
   void _shareRoomId() {
-    // Implement share functionality
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text('Room ID: ${widget.roomId}'),
         action: SnackBarAction(
           label: 'Copy',
           onPressed: () {
-            // Implement copy to clipboard
+            // TODO: Implement copy to clipboard
           },
         ),
+        backgroundColor: Color(0xFF1A0F2E),
       ),
     );
   }
 
   void _leaveRoom() async {
-    final roomProvider = Provider.of<RoomProvider>(context, listen: false);
-    final authProvider = Provider.of<AuthProvider>(context, listen: false);
-
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
@@ -558,7 +536,7 @@ class _RoomDetailsScreenState extends State<RoomDetailsScreen> {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
-            child: Text('Cancel'),
+            child: Text('Cancel', style: TextStyle(color: Color(0xFFC0C0D8))),
           ),
           ElevatedButton(
             onPressed: () => Navigator.pop(context, true),
@@ -570,21 +548,10 @@ class _RoomDetailsScreenState extends State<RoomDetailsScreen> {
     );
 
     if (confirmed == true && mounted) {
-      // ✅ Proper leave flow
       final gameProvider = Provider.of<GameProvider>(context, listen: false);
-
-      // If connected via WebSocket, use that
-      if (gameProvider.isConnected &&
-          gameProvider.currentRoomId == widget.roomId) {
-        await gameProvider.leaveRoom();
-      } else {
-        // Otherwise, just call REST API for cleanup
-        final roomProvider = Provider.of<RoomProvider>(context, listen: false);
-        await roomProvider.leaveRoom(
-          widget.roomId,
-          authProvider.currentUser!.id,
-        );
-      }
+      
+      // Use GameProvider's leave room which handles WebSocket disconnection
+      await gameProvider.leaveRoom();
 
       if (mounted) {
         Navigator.pop(context);
@@ -592,12 +559,32 @@ class _RoomDetailsScreenState extends State<RoomDetailsScreen> {
     }
   }
 
-  void _startGame() {
-    // Navigate to game screen or trigger game start
-    Navigator.pushReplacementNamed(
-      context,
-      '/game',
-      arguments: {'roomId': widget.roomId},
-    );
+  void _startGame() async {
+    final gameProvider = Provider.of<GameProvider>(context, listen: false);
+    
+    print('🎮 Starting game...');
+    final success = await gameProvider.startGame();
+    
+    if (success && mounted) {
+      print('✅ Game started successfully');
+      // Navigation will happen automatically via GameProvider listener in waiting_room
+      // Or navigate manually here:
+      Navigator.pushReplacementNamed(
+        context,
+        '/waiting',
+        arguments: {
+          'roomId': widget.roomId,
+          'roomName': widget.roomName,
+          'isHost': true,
+        },
+      );
+    } else if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(gameProvider.error ?? 'Failed to start game'),
+          backgroundColor: Color(0xFF8B0000),
+        ),
+      );
+    }
   }
 }
