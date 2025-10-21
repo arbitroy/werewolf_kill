@@ -38,6 +38,8 @@ class GameProvider with ChangeNotifier {
   String? get lastActionResult => _lastActionResult;
   String? get seerResult => _seerResult;
 
+  Function(String role, String description)? onShowRoleReveal;
+
   GameProvider() {
     _setupWebSocketCallbacks();
   }
@@ -243,6 +245,20 @@ class GameProvider with ChangeNotifier {
       _selectedTargetId = null;
       notifyListeners();
     };
+
+     _wsService.onRoleAssigned = (data) {
+    print('🎭 Role assigned: ${data['role']}');
+    if (_myPlayer != null && data['playerId'] == _myPlayer!.id) {
+      final role = data['role'] as String;
+      final roleDescription = data['roleDescription'] as String? ?? '';
+      
+      _myPlayer = _myPlayer!.copyWith(role: role);
+      
+      // ✅ Trigger role reveal UI
+      onShowRoleReveal?.call(role, roleDescription);
+    }
+    notifyListeners();
+  };
   }
 
   // ✅ NEW: Handle unified room state updates (most authoritative)

@@ -321,18 +321,19 @@ class WebSocketService {
       final data = jsonDecode(frame.body!);
       final type = data['type'] as String?;
 
-      print('📨 Game message type: $type'); // ✅ ADD THIS LOG
+      print('📨 Game message type: $type');
 
       switch (type) {
-        case 'GAME_STARTED': // ✅ ADD THIS CASE
+        case 'GAME_STARTED':
           print('🎮 GAME_STARTED message received!');
           onGameStarted?.call(data);
           break;
+        case 'ROLE_ASSIGNED': // ✅ Handle in game topic now
+          print('🎭 ROLE_ASSIGNED received in game topic');
+          _handleRoleAssignment(data);
+          break;
         case 'GAME_UPDATE':
           onGameUpdate?.call(data);
-          break;
-        case 'ROLE_ASSIGNED':
-          onRoleAssigned?.call(data);
           break;
         case 'PHASE_CHANGE':
           onPhaseChange?.call(data);
@@ -343,11 +344,27 @@ class WebSocketService {
         case 'PLAYER_DIED':
           onPlayerDied?.call(data);
           break;
+        case 'ROOM_STATE_UPDATE': // ✅ Handle here too
+          onRoomStateUpdate?.call(data);
+          break;
         default:
           print('⚠️ Unknown game message type: $type');
       }
     } catch (e) {
       print('❌ Error parsing game message: $e');
+    }
+  }
+
+  // ✅ New method to handle role assignment with filtering
+  void _handleRoleAssignment(Map<String, dynamic> data) {
+    final playerId = data['playerId'] as String?;
+
+    // Only process if it's for this player
+    if (playerId != null && playerId == _currentPlayerId) {
+      print('🎭 Role assigned to ME: ${data['role']}');
+      onRoleAssigned?.call(data);
+    } else {
+      print('🎭 Role assigned to another player (ignored)');
     }
   }
 

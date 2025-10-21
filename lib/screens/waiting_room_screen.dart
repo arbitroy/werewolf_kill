@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 import '../providers/game_provider.dart';
 import '../providers/auth_provider.dart';
 import '../core/models/player.dart';
+import '../widgets/game/role_reveal_dialog.dart';
 
 class WaitingRoomScreen extends StatefulWidget {
   final String roomId;
@@ -21,12 +22,46 @@ class WaitingRoomScreen extends StatefulWidget {
 }
 
 class _WaitingRoomScreenState extends State<WaitingRoomScreen> {
+  bool _roleRevealed = false;
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _connectToRoom();
+      _setupRoleRevealListener();
     });
+  }
+
+  void _setupRoleRevealListener() {
+    final gameProvider = Provider.of<GameProvider>(context, listen: false);
+
+    // ✅ Listen for role assignment
+    gameProvider.onShowRoleReveal = (role, description) {
+      if (mounted && !_roleRevealed) {
+        _roleRevealed = true;
+        _showRoleRevealDialog(role, description);
+      }
+    };
+  }
+
+  void _showRoleRevealDialog(String role, String description) {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => RoleRevealDialog(
+        role: role,
+        roleDescription: description,
+        onContinue: () {
+          Navigator.of(context).pop(); // Close dialog
+          // Now navigate to game screen
+          Navigator.pushReplacementNamed(
+            context,
+            '/game',
+            arguments: {'roomId': widget.roomId},
+          );
+        },
+      ),
+    );
   }
 
   void _connectToRoom() {
@@ -64,21 +99,21 @@ class _WaitingRoomScreenState extends State<WaitingRoomScreen> {
       builder: (context, gameProvider, child) {
         // ✅ CHECK FOR GAME START AND AUTO-NAVIGATE
         final gameState = gameProvider.gameState;
-        if (gameState != null &&
-            gameState.isActive &&
-            (gameState.phase == 'STARTING' || gameState.phase == 'NIGHT')) {
-          // Use WidgetsBinding to navigate after build completes
-          WidgetsBinding.instance.addPostFrameCallback((_) {
-            if (mounted) {
-              print('🎮 Game started - Navigating to game screen');
-              Navigator.pushReplacementNamed(
-                context,
-                '/game',
-                arguments: {'roomId': widget.roomId},
-              );
-            }
-          });
-        }
+        // if (gameState != null &&
+        //     gameState.isActive &&
+        //     (gameState.phase == 'STARTING' || gameState.phase == 'NIGHT')) {
+        //   // Use WidgetsBinding to navigate after build completes
+        //   WidgetsBinding.instance.addPostFrameCallback((_) {
+        //     if (mounted) {
+        //       print('🎮 Game started - Navigating to game screen');
+        //       Navigator.pushReplacementNamed(
+        //         context,
+        //         '/game',
+        //         arguments: {'roomId': widget.roomId},
+        //       );
+        //     }
+        //   });
+        // }
 
         final players = gameProvider.players;
         final authProvider = Provider.of<AuthProvider>(context, listen: false);
