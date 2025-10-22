@@ -102,8 +102,12 @@ class GameProvider with ChangeNotifier {
 
     _wsService.onRoleAssigned = (data) {
       print('🎭 Role assigned: ${data['role']}');
-      if (_myPlayer != null && data['playerId'] == _myPlayer!.id) {
-        _myPlayer = _myPlayer!.copyWith(role: data['role']);
+      final playerId = data['playerId'] as String?;
+
+      if (_myPlayer != null && playerId == _myPlayer!.id) {
+        final role = data['role'] as String;
+        _myPlayer = _myPlayer!.copyWith(role: role);
+        print('✅ My role updated to: ${_myPlayer!.role}');
       }
       notifyListeners();
     };
@@ -145,7 +149,7 @@ class GameProvider with ChangeNotifier {
     // ✅ NEW: Action confirmation callback
     _wsService.onActionConfirmed = (data) {
       print('✅ Action confirmed: ${data['action']}');
-      _hasActedTonight = true;
+      _hasActedTonight = true; // ✅ Now set it
       _lastActionResult = 'Action confirmed!';
       notifyListeners();
 
@@ -246,19 +250,19 @@ class GameProvider with ChangeNotifier {
       notifyListeners();
     };
 
-     _wsService.onRoleAssigned = (data) {
-    print('🎭 Role assigned: ${data['role']}');
-    if (_myPlayer != null && data['playerId'] == _myPlayer!.id) {
-      final role = data['role'] as String;
-      final roleDescription = data['roleDescription'] as String? ?? '';
-      
-      _myPlayer = _myPlayer!.copyWith(role: role);
-      
-      // ✅ Trigger role reveal UI
-      onShowRoleReveal?.call(role, roleDescription);
-    }
-    notifyListeners();
-  };
+    _wsService.onRoleAssigned = (data) {
+      print('🎭 Role assigned: ${data['role']}');
+      if (_myPlayer != null && data['playerId'] == _myPlayer!.id) {
+        final role = data['role'] as String;
+        final roleDescription = data['roleDescription'] as String? ?? '';
+
+        _myPlayer = _myPlayer!.copyWith(role: role);
+
+        // ✅ Trigger role reveal UI
+        onShowRoleReveal?.call(role, roleDescription);
+      }
+      notifyListeners();
+    };
   }
 
   // ✅ NEW: Handle unified room state updates (most authoritative)
@@ -266,7 +270,17 @@ class GameProvider with ChangeNotifier {
     print('📊 Processing ROOM_STATE_UPDATE');
 
     try {
-      final playersList = data['players'] as List?;
+      final currentPhase = data['currentPhase'] as String?;
+      if (currentPhase != null && _gameState != null) {
+        _gameState = GameState(
+          roomId: _gameState!.roomId,
+          phase: currentPhase,
+          dayNumber: data['dayNumber'] ?? _gameState!.dayNumber,
+          isActive: true,
+        );
+      }
+
+      final playersList = data['players'] as List<dynamic>?;
 
       if (playersList != null && playersList.isNotEmpty) {
         // Create new player list from the authoritative state
@@ -276,13 +290,14 @@ class GameProvider with ChangeNotifier {
             username: p['username'] as String,
             isHost: p['isHost'] as bool? ?? false,
             isAlive: (p['status'] as String?) == 'ALIVE',
-            role: p['role'] as String?,
+            role:
+                p['role'] as String?, // This will be null in public broadcasts
           );
         }).toList();
 
         print('✅ Updated ${_players.length} players from ROOM_STATE_UPDATE');
 
-        // Update myPlayer with current state
+        // ✅ FIX: Update myPlayer while PRESERVING the role
         if (_myPlayer != null) {
           final updatedMe = _players.firstWhere(
             (p) => p.id == _myPlayer!.id,
@@ -293,7 +308,16 @@ class GameProvider with ChangeNotifier {
             final wasHost = _myPlayer!.isHost;
             final nowHost = updatedMe.isHost;
 
-            _myPlayer = updatedMe;
+            // ✅ CRITICAL: Preserve the existing role if the update doesn't have one
+            final preservedRole = updatedMe.role ?? _myPlayer!.role;
+
+            _myPlayer = updatedMe.copyWith(
+              role: preservedRole, // Keep the role we got from ROLE_ASSIGNED
+            );
+
+            print(
+              '✅ My player updated - Role: ${_myPlayer!.role}, IsHost: ${_myPlayer!.isHost}',
+            );
 
             // Log host status changes for debugging
             if (wasHost != nowHost) {
@@ -585,6 +609,7 @@ class GameProvider with ChangeNotifier {
 
       _selectedTargetId = targetId;
       _error = null;
+      // ✅ Don't set _hasActedTonight here - let the callback do it
       notifyListeners();
     } catch (e) {
       print('❌ Error submitting night action: $e');

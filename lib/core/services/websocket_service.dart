@@ -139,6 +139,21 @@ class WebSocketService {
         }
       },
     );
+    
+    _client?.subscribe(
+      destination: '/user/queue/seer-result',
+      callback: (frame) {
+        if (frame.body != null) {
+          try {
+            final data = jsonDecode(frame.body!);
+            print('🔮 Seer result received: ${data['targetName']}');
+            onSeerResult?.call(data);
+          } catch (e) {
+            print('❌ Error parsing seer result: $e');
+          }
+        }
+      },
+    );
 
     // Subscribe to error queue
     _client?.subscribe(

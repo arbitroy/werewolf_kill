@@ -7,7 +7,7 @@ import '../core/models/player.dart';
 
 class GameScreen extends StatefulWidget {
   final String roomId;
-  
+
   const GameScreen({super.key, required this.roomId});
 
   @override
@@ -16,7 +16,7 @@ class GameScreen extends StatefulWidget {
 
 class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
   late AnimationController _phaseController;
-  
+
   @override
   void initState() {
     super.initState();
@@ -34,10 +34,18 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
         final players = gameProvider.players;
         final myPlayer = gameProvider.myPlayer;
         final selectedTargetId = gameProvider.selectedTargetId;
-        
+
         final isNight = gameState?.isNightPhase ?? false;
         final isVoting = gameState?.isVotingPhase ?? false;
         final myRole = myPlayer?.role ?? 'VILLAGER';
+
+        // ✅ DEBUG: Add logging
+        print('🎮 Game Screen Build:');
+        print('   - My Player: ${myPlayer?.username}');
+        print('   - My Role: $myRole');
+        print('   - Phase: ${gameState?.phase}');
+        print('   - Is Night: $isNight');
+        print('   - Is Voting: $isVoting');
 
         return Scaffold(
           body: AnimatedContainer(
@@ -58,18 +66,13 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
                   SizedBox(height: 24),
                   Expanded(
                     child: _buildPlayerCircle(
-                      players, 
-                      myPlayer?.id, 
+                      players,
+                      myPlayer?.id,
                       selectedTargetId,
                       gameProvider,
                     ),
                   ),
-                  _buildActionPanel(
-                    gameProvider, 
-                    myRole, 
-                    isNight, 
-                    isVoting,
-                  ),
+                  _buildActionPanel(gameProvider, myRole, isNight, isVoting),
                 ],
               ),
             ),
@@ -80,10 +83,14 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
   }
 
   Widget _buildTopBar(String myRole, GameProvider gameProvider) {
-    final displayRoomId = widget.roomId.length > 8 
-        ? widget.roomId.substring(0, 8) 
+    final displayRoomId = widget.roomId.length > 8
+        ? widget.roomId.substring(0, 8)
         : widget.roomId;
-    
+
+    // ✅ Show debug info if role is missing
+    final roleText = myRole.isNotEmpty ? _getRoleText(myRole) : '❓ Loading...';
+    final roleColor = myRole.isNotEmpty ? _getRoleColor(myRole) : Colors.grey;
+
     return Padding(
       padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       child: Row(
@@ -107,11 +114,12 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
                 ),
               ),
               Text(
-                _getRoleText(myRole),
+                roleText,
                 style: TextStyle(
                   fontFamily: 'Lora',
                   fontSize: 12,
-                  color: _getRoleColor(myRole),
+                  color: roleColor,
+                  fontWeight: FontWeight.bold,
                 ),
               ),
             ],
@@ -159,9 +167,9 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
                 style: TextStyle(
                   fontFamily: 'Lora',
                   fontSize: 14,
-                  color: isNight 
-                    ? Color(0xFFC0C0D8).withOpacity(0.8)
-                    : Colors.white.withOpacity(0.8),
+                  color: isNight
+                      ? Color(0xFFC0C0D8).withOpacity(0.8)
+                      : Colors.white.withOpacity(0.8),
                 ),
               ),
             ],
@@ -209,10 +217,7 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
       ),
       child: Text(
         result,
-        style: TextStyle(
-          color: Color(0xFF2E7D32),
-          fontWeight: FontWeight.bold,
-        ),
+        style: TextStyle(color: Color(0xFF2E7D32), fontWeight: FontWeight.bold),
         textAlign: TextAlign.center,
       ),
     );
@@ -225,14 +230,13 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
     GameProvider gameProvider,
   ) {
     if (players.isEmpty) {
-      return Center(
-        child: CircularProgressIndicator(color: Color(0xFFD4AF37)),
-      );
+      return Center(child: CircularProgressIndicator(color: Color(0xFFD4AF37)));
     }
 
     return LayoutBuilder(
       builder: (context, constraints) {
-        final radius = math.min(constraints.maxWidth, constraints.maxHeight) * 0.35;
+        final radius =
+            math.min(constraints.maxWidth, constraints.maxHeight) * 0.35;
         return Stack(
           children: List.generate(players.length, (index) {
             final angle = (2 * math.pi / players.length) * index - math.pi / 2;
@@ -245,12 +249,7 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
             return Positioned(
               left: constraints.maxWidth / 2 + x - 40,
               top: constraints.maxHeight / 2 + y - 40,
-              child: _buildPlayerAvatar(
-                player, 
-                isMe, 
-                isSelected,
-                gameProvider,
-              ),
+              child: _buildPlayerAvatar(player, isMe, isSelected, gameProvider),
             );
           }),
         );
@@ -259,17 +258,15 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
   }
 
   Widget _buildPlayerAvatar(
-    Player player, 
-    bool isMe, 
+    Player player,
+    bool isMe,
     bool isSelected,
     GameProvider gameProvider,
   ) {
     final canSelect = gameProvider.canTarget(player.id);
-    
+
     return GestureDetector(
-      onTap: canSelect 
-          ? () => gameProvider.selectTarget(player.id)
-          : null,
+      onTap: canSelect ? () => gameProvider.selectTarget(player.id) : null,
       child: Container(
         width: 80,
         height: 80,
@@ -278,16 +275,16 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
           color: isSelected
               ? Color(0xFF8B0000)
               : isMe
-                  ? Color(0xFFD4AF37)
-                  : player.isAlive
-                      ? Color(0xFF2E7D32)
-                      : Color(0xFF424242),
+              ? Color(0xFFD4AF37)
+              : player.isAlive
+              ? Color(0xFF2E7D32)
+              : Color(0xFF424242),
           border: Border.all(
             color: isSelected
                 ? Colors.red
                 : isMe
-                    ? Color(0xFFD4AF37)
-                    : Colors.white,
+                ? Color(0xFFD4AF37)
+                : Colors.white,
             width: isSelected ? 4 : 2,
           ),
           boxShadow: isSelected
@@ -314,10 +311,7 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
             SizedBox(height: 4),
             Text(
               player.username,
-              style: TextStyle(
-                fontSize: 10,
-                color: Colors.white,
-              ),
+              style: TextStyle(fontSize: 10, color: Colors.white),
               textAlign: TextAlign.center,
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
@@ -336,17 +330,31 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
     bool isNight,
     bool isVoting,
   ) {
-    // Villagers and Hunter don't act at night
-    if (isNight && (myRole == 'VILLAGER' || myRole == 'HUNTER')) {
-      return _buildWaitingPanel();
+    // ✅ Add defensive check
+    if (myRole.isEmpty || myRole == 'VILLAGER' || myRole == 'HUNTER') {
+      if (isNight) {
+        print('🌙 Non-acting role at night: $myRole');
+        return _buildWaitingPanel();
+      }
     }
 
+    // ✅ Add more explicit role checks for night actions
     if (isNight) {
-      return _buildNightActionPanel(gameProvider, myRole);
+      final roleUpper = myRole.toUpperCase();
+      print('🌙 Night phase - checking role: $roleUpper');
+
+      if (roleUpper == 'WEREWOLF' ||
+          roleUpper == 'SEER' ||
+          roleUpper == 'DOCTOR') {
+        return _buildNightActionPanel(gameProvider, myRole);
+      } else {
+        print('⏸️ Role $roleUpper waits at night');
+        return _buildWaitingPanel();
+      }
     } else if (isVoting) {
       return _buildVotePanel(gameProvider);
     }
-    
+
     return _buildWaitingPanel();
   }
 
@@ -397,7 +405,7 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
         mainAxisSize: MainAxisSize.min,
         children: [
           Text(
-            gameProvider.hasVoted 
+            gameProvider.hasVoted
                 ? 'Vote cast! Waiting for others...'
                 : 'Select a player to vote',
             style: TextStyle(
@@ -433,10 +441,12 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
   Widget _buildNightActionPanel(GameProvider gameProvider, String myRole) {
     final buttonText = gameProvider.getActionButtonText();
     final canSubmit = gameProvider.canSubmitAction();
-    
+
     String actionIcon;
     String actionText;
-    
+
+    print('🌙 Building night action panel for role: $myRole');
+
     switch (myRole.toUpperCase()) {
       case 'WEREWOLF':
         actionIcon = '🐺';
@@ -457,6 +467,7 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
             : 'Choose player to protect';
         break;
       default:
+        print('⚠️ Unexpected role in night action panel: $myRole');
         return _buildWaitingPanel();
     }
 
@@ -511,21 +522,31 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
 
   String _getRoleText(String role) {
     switch (role.toUpperCase()) {
-      case 'WEREWOLF': return '🐺 Werewolf';
-      case 'SEER': return '🔮 Seer';
-      case 'DOCTOR': return '💊 Doctor';
-      case 'HUNTER': return '🎯 Hunter';
-      default: return '👤 Villager';
+      case 'WEREWOLF':
+        return '🐺 Werewolf';
+      case 'SEER':
+        return '🔮 Seer';
+      case 'DOCTOR':
+        return '💊 Doctor';
+      case 'HUNTER':
+        return '🎯 Hunter';
+      default:
+        return '👤 Villager';
     }
   }
 
   Color _getRoleColor(String role) {
     switch (role.toUpperCase()) {
-      case 'WEREWOLF': return Color(0xFF8B0000);
-      case 'SEER': return Color(0xFFD4AF37);
-      case 'DOCTOR': return Color(0xFF2E7D32);
-      case 'HUNTER': return Color(0xFFFF6B35);
-      default: return Color(0xFF4A5568);
+      case 'WEREWOLF':
+        return Color(0xFF8B0000);
+      case 'SEER':
+        return Color(0xFFD4AF37);
+      case 'DOCTOR':
+        return Color(0xFF2E7D32);
+      case 'HUNTER':
+        return Color(0xFFFF6B35);
+      default:
+        return Color(0xFF4A5568);
     }
   }
 
