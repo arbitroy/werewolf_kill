@@ -41,6 +41,10 @@ class WebSocketService {
   Function(Map<String, dynamic>)? onVoteCountUpdate;
   Function(Map<String, dynamic>)? onNightResult;
   Function(Map<String, dynamic>)? onVoteResult;
+  Function(Map<String, dynamic> data)? onHunterRevengeTriggered;
+  Function(Map<String, dynamic> data)? onHunterRevengePrompt;
+  Function(Map<String, dynamic> data)? onHunterRevengeExecuted;
+  Function(Map<String, dynamic> data)? onHunterRevengeTimeout;
 
   ConnectionState get connectionState => _connectionState;
   bool get isConnected => _connectionState == ConnectionState.connected;
@@ -139,7 +143,7 @@ class WebSocketService {
         }
       },
     );
-    
+
     _client?.subscribe(
       destination: '/user/queue/seer-result',
       callback: (frame) {
@@ -161,6 +165,14 @@ class WebSocketService {
       callback: (frame) {
         if (frame.body != null) {
           _handleErrorMessage(frame);
+        }
+      },
+    );
+    _client?.subscribe(
+      destination: '/user/queue/hunter-revenge',
+      callback: (frame) {
+        if (frame.body != null) {
+          _handleHunterRevengeMessage(frame);
         }
       },
     );
@@ -362,11 +374,36 @@ class WebSocketService {
         case 'ROOM_STATE_UPDATE': // ✅ Handle here too
           onRoomStateUpdate?.call(data);
           break;
+        case 'HUNTER_REVENGE_TRIGGERED':
+          onHunterRevengeTriggered?.call(data);
+          break;
+
+        case 'HUNTER_REVENGE_EXECUTED':
+          onHunterRevengeExecuted?.call(data);
+          break;
+
+        case 'HUNTER_REVENGE_TIMEOUT':
+          onHunterRevengeTimeout?.call(data);
+          break;
+
         default:
           print('⚠️ Unknown game message type: $type');
       }
     } catch (e) {
       print('❌ Error parsing game message: $e');
+    }
+  }
+
+  void _handleHunterRevengeMessage(StompFrame frame) {
+    try {
+      final data = jsonDecode(frame.body!);
+      final type = data['type'] as String?;
+
+      if (type == 'HUNTER_REVENGE_PROMPT') {
+        onHunterRevengePrompt?.call(data);
+      }
+    } catch (e) {
+      print('❌ Error parsing hunter revenge message: $e');
     }
   }
 

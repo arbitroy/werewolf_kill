@@ -5,6 +5,8 @@ class GameState {
   final bool isActive;
   final Map<String, int>? voteCounts;
   final String? lastAction;
+  final int? phaseDuration; // ✅ NEW: Duration in seconds
+  final int? phaseEndTime; // ✅ NEW: Unix timestamp in ms
 
   GameState({
     this.roomId,
@@ -13,6 +15,8 @@ class GameState {
     this.isActive = false,
     this.voteCounts,
     this.lastAction,
+    this.phaseDuration, // ✅ NEW
+    this.phaseEndTime, // ✅ NEW
   });
 
   factory GameState.fromJson(Map<String, dynamic> json) {
@@ -25,6 +29,8 @@ class GameState {
           ? Map<String, int>.from(json['voteCounts'])
           : null,
       lastAction: json['lastAction'],
+      phaseDuration: json['duration'] as int?, // ✅ NEW
+      phaseEndTime: json['phaseEndTime'] as int?, // ✅ NEW
     );
   }
 
@@ -37,6 +43,13 @@ class GameState {
       'voteCounts': voteCounts,
       'lastAction': lastAction,
     };
+  }
+
+  int getRemainingSeconds() {
+    if (phaseEndTime == null) return 0;
+    final now = DateTime.now().millisecondsSinceEpoch;
+    final remaining = ((phaseEndTime! - now) / 1000).round();
+    return remaining > 0 ? remaining : 0;
   }
 
   GameState copyWith({

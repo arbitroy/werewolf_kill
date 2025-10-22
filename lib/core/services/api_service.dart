@@ -273,13 +273,13 @@ class ApiService {
   // Game
   Future<void> startGame(String roomId) async {
     print('🔵 Starting game: $baseUrl/game/$roomId/start');
-    
+
     // ✅ Add token validation before making request
     if (_token == null || _token!.isEmpty) {
       print('❌ ERROR: No authentication token available!');
       throw Exception('Not authenticated. Please log in again.');
     }
-    
+
     print('🔐 Using token: ${_token!.substring(0, 10)}...');
 
     final response = await _makeRequestWithRetry(
@@ -326,6 +326,32 @@ class ApiService {
 
     if (response.statusCode != 200) {
       throw Exception('Failed to cast vote');
+    }
+  }
+
+  Future<void> hunterRevenge(
+    String roomId,
+    String hunterId,
+    String targetId,
+  ) async {
+    print('🔵 Hunter revenge: $baseUrl/game/$roomId/hunter-revenge');
+
+    final response = await _makeRequestWithRetry(
+      request: () => http
+          .post(
+            Uri.parse('$baseUrl/game/$roomId/hunter-revenge'),
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': 'Bearer $_token',
+            },
+            body: jsonEncode({'hunterId': hunterId, 'targetId': targetId}),
+          )
+          .timeout(Duration(seconds: 30)),
+    );
+
+    if (response.statusCode != 200) {
+      final error = jsonDecode(response.body);
+      throw Exception(error['message'] ?? 'Failed to execute hunter revenge');
     }
   }
 }

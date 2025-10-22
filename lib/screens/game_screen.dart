@@ -1,9 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'dart:math' as math;
+import '../core/models/game_state.dart';
 import '../providers/game_provider.dart';
 import '../providers/auth_provider.dart';
 import '../core/models/player.dart';
+import '../widgets/game/countdown_timer.dart';
+import '../widgets/game/hunter_revenge_dialog.dart';
 
 class GameScreen extends StatefulWidget {
   final String roomId;
@@ -23,6 +26,101 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
     _phaseController = AnimationController(
       duration: Duration(seconds: 2),
       vsync: this,
+    );
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final gameProvider = Provider.of<GameProvider>(context, listen: false);
+
+      // Listen for hunter revenge prompt (private to hunter)
+      gameProvider.addListener(() {
+        if (gameProvider.amITheHunter &&
+            gameProvider.hunterTargets.isNotEmpty &&
+            mounted) {
+          _showHunterRevengeDialog();
+        }
+      });
+    });
+  }
+
+  void _showHunterRevengeDialog() {
+    final gameProvider = Provider.of<GameProvider>(context, listen: false);
+
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => Consumer<GameProvider>(
+        builder: (context, provider, child) {
+          return HunterRevengeDialog(
+            availableTargets: provider.hunterTargets,
+            secondsRemaining: provider.hunterRevengeSecondsRemaining,
+            onTargetSelected: (targetId) {
+              provider.submitHunterRevenge(targetId);
+            },
+          );
+        },
+      ),
+    );
+  }
+
+  Widget _buildHunterRevengeOverlay() {
+    return Consumer<GameProvider>(
+      builder: (context, gameProvider, child) {
+        if (!gameProvider.isHunterRevengeActive || gameProvider.amITheHunter) {
+          return SizedBox.shrink();
+        }
+
+        return Positioned.fill(
+          child: Container(
+            color: Colors.black.withOpacity(0.8),
+            child: Center(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text('🎯', style: TextStyle(fontSize: 80)),
+                  SizedBox(height: 16),
+                  Text(
+                    'HUNTER\'S REVENGE',
+                    style: TextStyle(
+                      fontFamily: 'Cinzel',
+                      fontSize: 32,
+                      fontWeight: FontWeight.bold,
+                      color: Color(0xFFD4AF37),
+                    ),
+                  ),
+                  SizedBox(height: 12),
+                  Text(
+                    'The Hunter is choosing their final target...',
+                    style: TextStyle(
+                      fontFamily: 'Lora',
+                      fontSize: 18,
+                      color: Colors.white.withOpacity(0.8),
+                    ),
+                    textAlign: TextAlign.center,
+                  ),
+                  SizedBox(height: 20),
+                  Container(
+                    padding: EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                    decoration: BoxDecoration(
+                      color: Colors.black.withOpacity(0.5),
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(color: Color(0xFFD4AF37), width: 2),
+                    ),
+                    child: Text(
+                      '${gameProvider.hunterRevengeSecondsRemaining}s',
+                      style: TextStyle(
+                        fontFamily: 'Cinzel',
+                        fontSize: 36,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.white,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        );
+      },
     );
   }
 
@@ -73,6 +171,7 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
                     ),
                   ),
                   _buildActionPanel(gameProvider, myRole, isNight, isVoting),
+                  _buildHunterRevengeOverlay(),
                 ],
               ),
             ),
@@ -130,7 +229,7 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
     );
   }
 
-  Widget _buildPhaseIndicator(dynamic gameState, bool isNight) {
+  Widget _buildStaticPhaseIndicator(dynamic gameState, bool isNight) {
     return Container(
       padding: EdgeInsets.symmetric(horizontal: 24, vertical: 12),
       decoration: BoxDecoration(
@@ -177,6 +276,85 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
         ],
       ),
     );
+  }
+
+  Widget _buildPhaseIndicator(GameState? gameState, bool isNight) {
+    if (gameState == null || gameState.phaseEndTime == null) {
+      // Fallback for old format
+      return _buildStaticPhaseIndicator(gameState, isNight);
+    }
+
+    return Column(
+      children: [
+        // Phase name
+        Container(
+          padding: EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+          decoration: BoxDecoration(
+            color: Colors.black.withOpacity(0.3),
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(
+              color: isNight ? Color(0xFFC0C0D8) : Color(0xFFFFE4B5),
+              width: 2,
+            ),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                isNight ? Icons.nightlight_round : Icons.wb_sunny,
+                color: isNight ? Color(0xFFC0C0D8) : Colors.orange,
+                size: 24,
+              ),
+              SizedBox(width: 8),
+              Text(
+                _getPhaseDisplayName(gameState.phase),
+                style: TextStyle(
+                  fontFamily: 'Cinzel',
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                  color: isNight ? Color(0xFFC0C0D8) : Colors.white,
+                ),
+              ),
+              SizedBox(width: 8),
+              Text(
+                'Day ${gameState.dayNumber}',
+                style: TextStyle(
+                  fontFamily: 'Lora',
+                  fontSize: 14,
+                  color: (isNight ? Color(0xFFC0C0D8) : Colors.white)
+                      .withOpacity(0.8),
+                ),
+              ),
+            ],
+          ),
+        ),
+        SizedBox(height: 12),
+        // ✅ COUNTDOWN TIMER
+        CountdownTimer(
+          endTimeMs: gameState.phaseEndTime!,
+          isNight: isNight,
+          onComplete: () {
+            print('⏰ Phase timer completed on client side');
+            // Phase should auto-transition from backend
+          },
+        ),
+      ],
+    );
+  }
+
+  String _getPhaseDisplayName(String phase) {
+    switch (phase.toUpperCase()) {
+      case 'NIGHT':
+        return 'Night Phase';
+      case 'DAY':
+        return 'Discussion';
+      case 'VOTING':
+        return 'Voting Time';
+      case 'STARTING':
+        return 'Game Starting...';
+      default:
+        return phase;
+    }
   }
 
   Widget _buildSeerResult(String result) {

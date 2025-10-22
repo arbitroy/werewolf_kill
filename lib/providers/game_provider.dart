@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 import '../core/models/game_state.dart';
 import '../core/models/player.dart';
@@ -21,6 +23,11 @@ class GameProvider with ChangeNotifier {
   Map<String, int> _voteCount = {};
   String? _lastActionResult;
   String? _seerResult;
+  bool _isHunterRevengeActive = false;
+  bool _amITheHunter = false;
+  List<Map<String, dynamic>> _hunterTargets = [];
+  int _hunterRevengeSecondsRemaining = 0;
+  Timer? _hunterRevengeTimer;
 
   // Getters
   GameState? get gameState => _gameState;
@@ -37,6 +44,10 @@ class GameProvider with ChangeNotifier {
   Map<String, int> get voteCount => _voteCount;
   String? get lastActionResult => _lastActionResult;
   String? get seerResult => _seerResult;
+  bool get isHunterRevengeActive => _isHunterRevengeActive;
+  bool get amITheHunter => _amITheHunter;
+  List<Map<String, dynamic>> get hunterTargets => _hunterTargets;
+  int get hunterRevengeSecondsRemaining => _hunterRevengeSecondsRemaining;
 
   Function(String role, String description)? onShowRoleReveal;
 
@@ -114,14 +125,69 @@ class GameProvider with ChangeNotifier {
 
     _wsService.onPhaseChange = (data) {
       print('🌓 Phase changed to: ${data['phase']}');
-      if (_gameState != null) {
-        _gameState = GameState(
-          roomId: _gameState!.roomId,
-          phase: data['phase'],
-          dayNumber: data['dayNumber'] ?? _gameState!.dayNumber,
-          isActive: true,
-        );
+      print('   Duration: ${data['duration']}s');
+      print('   End time: ${data['phaseEndTime']}');
+
+      // Reset action flags
+      if (data['phase'] == 'NIGHT') {
+        _hasActedTonight = false;
+        _hasVoted = false;
+      } else if (data['phase'] == 'VOTING') {
+        _hasVoted = false;
       }
+
+      // ✅ Update game state with timer info
+      _gameState = GameState(
+        roomId: _gameState?.roomId ?? _currentRoomId,
+        phase: data['phase'],
+        dayNumber: data['dayNumber'] ?? _gameState?.dayNumber ?? 0,
+        isActive: true,
+        phaseDuration: data['duration'] as int?, // ✅ NEW
+        phaseEndTime: data['phaseEndTime'] as int?, // ✅ NEW
+      );
+
+      _wsService.onHunterRevengeTriggered = (data) {
+        print('🎯 Hunter revenge triggered');
+        _isHunterRevengeActive = true;
+
+        final deadline = data['deadline'] as int?;
+        if (deadline != null) {
+          _startHunterRevengeCountdown(deadline);
+        }
+
+        notifyListeners();
+      };
+
+      // ✅ Hunter revenge prompt (private to hunter)
+      _wsService.onHunterRevengePrompt = (data) {
+        print('🎯 I am the hunter! Choosing revenge target...');
+        _amITheHunter = true;
+        _hunterTargets = List<Map<String, dynamic>>.from(
+          data['availableTargets'] ?? [],
+        );
+
+        final deadline = data['deadline'] as int?;
+        if (deadline != null) {
+          _startHunterRevengeCountdown(deadline);
+        }
+
+        notifyListeners();
+      };
+
+      // ✅ Hunter revenge executed
+      _wsService.onHunterRevengeExecuted = (data) {
+        print('🎯 Hunter revenge executed on ${data['targetName']}');
+        _clearHunterRevengeState();
+        notifyListeners();
+      };
+
+      // ✅ Hunter revenge timeout
+      _wsService.onHunterRevengeTimeout = (data) {
+        print('⏰ Hunter revenge timed out');
+        _clearHunterRevengeState();
+        notifyListeners();
+      };
+
       notifyListeners();
     };
 
@@ -263,6 +329,61 @@ class GameProvider with ChangeNotifier {
       }
       notifyListeners();
     };
+  }
+
+  void _startHunterRevengeCountdown(int deadlineMs) {
+    _hunterRevengeTimer?.cancel();
+    
+    void updateCountdown() {
+      final now = DateTime.now().millisecondsSinceEpoch;
+      final remaining = ((deadlineMs - now) / 1000).round();
+      _hunterRevengeSecondsRemaining = remaining > 0 ? remaining : 0;
+      
+      if (_hunterRevengeSecondsRemaining <= 0) {
+        _hunterRevengeTimer?.cancel();
+      }
+      
+      notifyListeners();
+    }
+    
+    updateCountdown();
+    _hunterRevengeTimer = Timer.periodic(
+      Duration(seconds: 1),
+      (_) => updateCountdown()
+    );
+  }
+
+  void _clearHunterRevengeState() {
+    _isHunterRevengeActive = false;
+    _amITheHunter = false;
+    _hunterTargets.clear();
+    _hunterRevengeSecondsRemaining = 0;
+    _hunterRevengeTimer?.cancel();
+  }
+
+  // ✅ NEW: Submit hunter revenge
+  Future<void> submitHunterRevenge(String targetId) async {
+    if (_currentRoomId == null || _myPlayer == null) {
+      _error = 'Not in a game';
+      notifyListeners();
+      return;
+    }
+
+    try {
+      print('🎯 Submitting hunter revenge on $targetId');
+      
+      await _apiService.hunterRevenge(
+        _currentRoomId!,
+        _myPlayer!.id,
+        targetId,
+      );
+      
+      print('✅ Hunter revenge submitted');
+    } catch (e) {
+      print('❌ Failed to submit hunter revenge: $e');
+      _error = e.toString().replaceAll('Exception: ', '');
+      notifyListeners();
+    }
   }
 
   // ✅ NEW: Handle unified room state updates (most authoritative)
@@ -464,6 +585,12 @@ class GameProvider with ChangeNotifier {
     }
 
     notifyListeners();
+  }
+
+  @override
+  void dispose() {
+    _hunterRevengeTimer?.cancel();
+    super.dispose();
   }
 
   // ✅ Connect to game room via WebSocket
