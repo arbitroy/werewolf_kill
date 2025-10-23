@@ -77,11 +77,11 @@ class WebSocketService {
     // Build WebSocket URL - native WebSocket only, no SockJS
     String wsUrl;
     if (connectionUrl.startsWith('http://')) {
-      wsUrl = connectionUrl.replaceFirst('http://', 'ws://') + '/ws/game';
+      wsUrl = '${connectionUrl.replaceFirst('http://', 'ws://')}/ws/game';
     } else if (connectionUrl.startsWith('https://')) {
-      wsUrl = connectionUrl.replaceFirst('https://', 'wss://') + '/ws/game';
+      wsUrl = '${connectionUrl.replaceFirst('https://', 'wss://')}/ws/game';
     } else {
-      wsUrl = 'wss://' + connectionUrl + '/ws/game';
+      wsUrl = 'wss://$connectionUrl/ws/game';
     }
 
     print('🔵 WebSocket URL: $wsUrl');

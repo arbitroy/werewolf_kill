@@ -7,11 +7,11 @@ class HunterRevengeDialog extends StatefulWidget {
   final Function(String targetId) onTargetSelected;
 
   const HunterRevengeDialog({
-    Key? key,
+    super.key,
     required this.availableTargets,
     required this.secondsRemaining,
     required this.onTargetSelected,
-  }) : super(key: key);
+  });
 
   @override
   State<HunterRevengeDialog> createState() => _HunterRevengeDialogState();

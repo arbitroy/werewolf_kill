@@ -7,11 +7,11 @@ class CountdownTimer extends StatefulWidget {
   final VoidCallback? onComplete;
 
   const CountdownTimer({
-    Key? key,
+    super.key,
     required this.endTimeMs,
     required this.isNight,
     this.onComplete,
-  }) : super(key: key);
+  });
 
   @override
   State<CountdownTimer> createState() => _CountdownTimerState();

@@ -10,11 +10,11 @@ class RoomDetailsScreen extends StatefulWidget {
   final bool isHost;
 
   const RoomDetailsScreen({
-    Key? key,
+    super.key,
     required this.roomId,
     required this.roomName,
     this.isHost = false,
-  }) : super(key: key);
+  });
 
   @override
   _RoomDetailsScreenState createState() => _RoomDetailsScreenState();

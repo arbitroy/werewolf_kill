@@ -316,7 +316,7 @@ class _LobbyScreenState extends State<LobbyScreen>
   // In _buildRoomCard method
   Widget _buildRoomCard(Room room) {
     // ✅ Check if game is active
-    final isGameActive = room.status != null && room.status != 'WAITING';
+    final isGameActive = room.status != 'WAITING';
     final canJoin = !isGameActive && room.currentPlayers < room.maxPlayers;
 
     return Card(

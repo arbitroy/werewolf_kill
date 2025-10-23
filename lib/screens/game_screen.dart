@@ -3,7 +3,6 @@ import 'package:provider/provider.dart';
 import 'dart:math' as math;
 import '../core/models/game_state.dart';
 import '../providers/game_provider.dart';
-import '../providers/auth_provider.dart';
 import '../core/models/player.dart';
 import '../widgets/game/countdown_timer.dart';
 import '../widgets/game/hunter_revenge_dialog.dart';

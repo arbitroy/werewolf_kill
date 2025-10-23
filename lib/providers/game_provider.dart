@@ -20,7 +20,7 @@ class GameProvider with ChangeNotifier {
   String? _selectedTargetId;
   bool _hasActedTonight = false;
   bool _hasVoted = false;
-  Map<String, int> _voteCount = {};
+  final Map<String, int> _voteCount = {};
   String? _lastActionResult;
   String? _seerResult;
   bool _isHunterRevengeActive = false;

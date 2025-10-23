@@ -6,11 +6,11 @@ class RoleRevealDialog extends StatelessWidget {
   final VoidCallback onContinue;
 
   const RoleRevealDialog({
-    Key? key,
+    super.key,
     required this.role,
     required this.roleDescription,
     required this.onContinue,
-  }) : super(key: key);
+  });
 
   @override
   Widget build(BuildContext context) {
