@@ -190,7 +190,7 @@ class _WaitingRoomScreenState extends State<WaitingRoomScreen> {
                   boxShadow: isConnected
                       ? [
                           BoxShadow(
-                            color: Colors.green.withOpacity(0.5),
+                            color: Colors.green.withValues(alpha: 0.5),
                             blurRadius: 8,
                             spreadRadius: 2,
                           ),
@@ -202,7 +202,7 @@ class _WaitingRoomScreenState extends State<WaitingRoomScreen> {
               Text(
                 isConnected ? 'Connected' : 'Connecting...',
                 style: TextStyle(
-                  color: Color(0xFFC0C0D8).withOpacity(0.7),
+                  color: Color(0xFFC0C0D8).withValues(alpha: 0.7),
                   fontSize: 12,
                 ),
               ),
@@ -225,7 +225,7 @@ class _WaitingRoomScreenState extends State<WaitingRoomScreen> {
             style: TextStyle(
               fontFamily: 'Lora',
               fontSize: 16,
-              color: Color(0xFFC0C0D8).withOpacity(0.7),
+              color: Color(0xFFC0C0D8).withValues(alpha: 0.7),
             ),
           ),
         ],
@@ -244,7 +244,7 @@ class _WaitingRoomScreenState extends State<WaitingRoomScreen> {
             Text(
               'Waiting for players...',
               style: TextStyle(
-                color: Color(0xFFC0C0D8).withOpacity(0.7),
+                color: Color(0xFFC0C0D8).withValues(alpha: 0.7),
                 fontSize: 16,
               ),
             ),
@@ -276,7 +276,7 @@ class _WaitingRoomScreenState extends State<WaitingRoomScreen> {
           color: player.isHost
               ? Color(0xFFD4AF37)
               : (isMe
-                    ? Color(0xFFD4AF37).withOpacity(0.3)
+                    ? Color(0xFFD4AF37).withValues(alpha: 0.3)
                     : Colors.transparent),
           width: player.isHost ? 2 : 1,
         ),
@@ -332,7 +332,7 @@ class _WaitingRoomScreenState extends State<WaitingRoomScreen> {
                         shape: BoxShape.circle,
                         boxShadow: [
                           BoxShadow(
-                            color: Color(0xFFFFD700).withOpacity(0.5),
+                            color: Color(0xFFFFD700).withValues(alpha: 0.5),
                             blurRadius: 8,
                             spreadRadius: 2,
                           ),
@@ -383,7 +383,7 @@ class _WaitingRoomScreenState extends State<WaitingRoomScreen> {
                         borderRadius: BorderRadius.circular(12),
                         boxShadow: [
                           BoxShadow(
-                            color: Color(0xFFD4AF37).withOpacity(0.3),
+                            color: Color(0xFFD4AF37).withValues(alpha: 0.3),
                             blurRadius: 8,
                             spreadRadius: 1,
                           ),
@@ -420,7 +420,7 @@ class _WaitingRoomScreenState extends State<WaitingRoomScreen> {
       margin: EdgeInsets.all(16),
       padding: EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: Colors.red.withOpacity(0.2),
+        color: Colors.red.withValues(alpha: 0.2),
         borderRadius: BorderRadius.circular(8),
         border: Border.all(color: Colors.red),
       ),
@@ -454,10 +454,10 @@ class _WaitingRoomScreenState extends State<WaitingRoomScreen> {
     return Container(
       padding: EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: Color(0xFF1A0F2E).withOpacity(0.95),
+        color: Color(0xFF1A0F2E).withValues(alpha: 0.95),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.3),
+            color: Colors.black.withValues(alpha: 0.3),
             blurRadius: 10,
             offset: Offset(0, -5),
           ),
@@ -473,7 +473,7 @@ class _WaitingRoomScreenState extends State<WaitingRoomScreen> {
                 margin: EdgeInsets.only(bottom: 12),
                 padding: EdgeInsets.all(12),
                 decoration: BoxDecoration(
-                  color: Colors.orange.withOpacity(0.2),
+                  color: Colors.orange.withValues(alpha: 0.2),
                   borderRadius: BorderRadius.circular(8),
                   border: Border.all(color: Colors.orange),
                 ),
@@ -500,9 +500,9 @@ class _WaitingRoomScreenState extends State<WaitingRoomScreen> {
             Container(
               padding: EdgeInsets.symmetric(horizontal: 16, vertical: 12),
               decoration: BoxDecoration(
-                color: Color(0xFF2D1B4E).withOpacity(0.5),
+                color: Color(0xFF2D1B4E).withValues(alpha: 0.5),
                 borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: Color(0xFFD4AF37).withOpacity(0.3)),
+                border: Border.all(color: Color(0xFFD4AF37).withValues(alpha: 0.3)),
               ),
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.center,
@@ -522,7 +522,7 @@ class _WaitingRoomScreenState extends State<WaitingRoomScreen> {
                     Text(
                       '(Need ${3 - playerCount} more)',
                       style: TextStyle(
-                        color: Color(0xFFC0C0D8).withOpacity(0.6),
+                        color: Color(0xFFC0C0D8).withValues(alpha: 0.6),
                         fontSize: 14,
                       ),
                     ),
@@ -621,7 +621,7 @@ class _WaitingRoomScreenState extends State<WaitingRoomScreen> {
                             : Color(0xFF2D1B4E),
                         foregroundColor: canActuallyStart
                             ? Color(0xFF1A0F2E)
-                            : Color(0xFFC0C0D8).withOpacity(0.5),
+                            : Color(0xFFC0C0D8).withValues(alpha: 0.5),
                         padding: EdgeInsets.symmetric(vertical: 16),
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(12),

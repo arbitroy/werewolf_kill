@@ -28,6 +28,8 @@ class GameProvider with ChangeNotifier {
   List<Map<String, dynamic>> _hunterTargets = [];
   int _hunterRevengeSecondsRemaining = 0;
   Timer? _hunterRevengeTimer;
+  String? _gameOverWinner;
+  dynamic _gameOverResults;
 
   // Getters
   GameState? get gameState => _gameState;
@@ -48,6 +50,8 @@ class GameProvider with ChangeNotifier {
   bool get amITheHunter => _amITheHunter;
   List<Map<String, dynamic>> get hunterTargets => _hunterTargets;
   int get hunterRevengeSecondsRemaining => _hunterRevengeSecondsRemaining;
+  String? get gameOverWinner => _gameOverWinner;
+  dynamic get gameOverResults => _gameOverResults;
 
   Function(String role, String description)? onShowRoleReveal;
 
@@ -295,25 +299,72 @@ class GameProvider with ChangeNotifier {
     _wsService.onPhaseChange = (data) {
       print('🌓 Phase changed to: ${data['phase']}');
 
+      // Extract timer data from backend
+      int? duration = data['duration'] as int?;
+      int? phaseEndTime = data['phaseEndTime'] as int?;
+
+      // ✅ DEFENSIVE PROGRAMMING: Calculate fallback timer if missing
+      if (duration == null || phaseEndTime == null) {
+        print('⚠️ WARNING: Backend did not send timer data');
+        print('   Calculating fallback timer based on phase type');
+
+        // Use standard phase durations as fallback
+        switch (data['phase'].toString().toUpperCase()) {
+          case 'STARTING':
+            duration = 5;
+            print('   → Using fallback: 5 seconds for STARTING');
+            break;
+          case 'NIGHT':
+            duration = 60;
+            print('   → Using fallback: 60 seconds for NIGHT');
+            break;
+          case 'DAY':
+            duration = 120;
+            print('   → Using fallback: 120 seconds for DAY');
+            break;
+          case 'VOTING':
+            duration = 60;
+            print('   → Using fallback: 60 seconds for VOTING');
+            break;
+          default:
+            duration = 30; // Generic fallback
+            print('   → Using generic fallback: 30 seconds');
+        }
+
+        // Calculate end time from now + duration
+        phaseEndTime =
+            DateTime.now().millisecondsSinceEpoch + (duration * 1000);
+        print('   → Calculated phaseEndTime: $phaseEndTime');
+      } else {
+        print('   ✅ Timer data received from backend');
+        print('   Duration: ${duration}s');
+        print('   End time: $phaseEndTime');
+      }
+
       // Reset action flags on phase change
       if (data['phase'] == 'NIGHT') {
         _hasActedTonight = false;
         _hasVoted = false;
+        print('   Reset night action flags');
       } else if (data['phase'] == 'VOTING') {
         _hasVoted = false;
+        print('   Reset voting flag');
       }
 
-      if (_gameState != null) {
-        _gameState = GameState(
-          roomId: _gameState!.roomId,
-          phase: data['phase'],
-          dayNumber: data['dayNumber'] ?? _gameState!.dayNumber,
-          isActive: true,
-        );
-      }
+      // ✅ Update game state with guaranteed timer data
+      _gameState = GameState(
+        roomId: _gameState?.roomId ?? _currentRoomId,
+        phase: data['phase'],
+        dayNumber: data['dayNumber'] ?? _gameState?.dayNumber ?? 0,
+        isActive: true,
+        phaseDuration: duration, // ✅ Will never be null now
+        phaseEndTime: phaseEndTime, // ✅ Will never be null now
+      );
 
       _selectedTargetId = null;
       notifyListeners();
+
+      print('✅ Phase change complete: ${data['phase']} (${duration}s)');
     };
 
     _wsService.onRoleAssigned = (data) {
@@ -329,27 +380,60 @@ class GameProvider with ChangeNotifier {
       }
       notifyListeners();
     };
+
+    // ✅ ADD THIS:
+    _wsService.onGameOver = (data) {
+      print('🎮 GAME OVER! Winner: ${data['winner']}');
+
+      if (_gameState != null) {
+        _gameState = GameState(
+          roomId: _gameState!.roomId,
+          phase: 'GAME_OVER',
+          dayNumber: data['totalDays'] ?? _gameState!.dayNumber,
+          isActive: false,
+        );
+      }
+
+      // Show dialog or navigate to game over screen
+      _showGameOverAlert(data['winner'], data['finalResults']);
+
+      notifyListeners();
+    };
+
+    // ✅ ADD THIS:
+    _wsService.onNightResult = (data) {
+      print('🌙 Night result: ${data['message']}');
+      _lastActionResult = data['message'] as String?;
+      notifyListeners();
+    };
+  }
+
+  void _showGameOverAlert(String? winner, dynamic results) {
+    // This triggers UI update
+    _gameOverWinner = winner;
+    _gameOverResults = results;
+    notifyListeners();
   }
 
   void _startHunterRevengeCountdown(int deadlineMs) {
     _hunterRevengeTimer?.cancel();
-    
+
     void updateCountdown() {
       final now = DateTime.now().millisecondsSinceEpoch;
       final remaining = ((deadlineMs - now) / 1000).round();
       _hunterRevengeSecondsRemaining = remaining > 0 ? remaining : 0;
-      
+
       if (_hunterRevengeSecondsRemaining <= 0) {
         _hunterRevengeTimer?.cancel();
       }
-      
+
       notifyListeners();
     }
-    
+
     updateCountdown();
     _hunterRevengeTimer = Timer.periodic(
       Duration(seconds: 1),
-      (_) => updateCountdown()
+      (_) => updateCountdown(),
     );
   }
 
@@ -371,13 +455,9 @@ class GameProvider with ChangeNotifier {
 
     try {
       print('🎯 Submitting hunter revenge on $targetId');
-      
-      await _apiService.hunterRevenge(
-        _currentRoomId!,
-        _myPlayer!.id,
-        targetId,
-      );
-      
+
+      await _apiService.hunterRevenge(_currentRoomId!, _myPlayer!.id, targetId);
+
       print('✅ Hunter revenge submitted');
     } catch (e) {
       print('❌ Failed to submit hunter revenge: $e');

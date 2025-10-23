@@ -45,6 +45,7 @@ class WebSocketService {
   Function(Map<String, dynamic> data)? onHunterRevengePrompt;
   Function(Map<String, dynamic> data)? onHunterRevengeExecuted;
   Function(Map<String, dynamic> data)? onHunterRevengeTimeout;
+  Function(Map<String, dynamic>)? onGameOver;
 
   ConnectionState get connectionState => _connectionState;
   bool get isConnected => _connectionState == ConnectionState.connected;
@@ -384,6 +385,16 @@ class WebSocketService {
 
         case 'HUNTER_REVENGE_TIMEOUT':
           onHunterRevengeTimeout?.call(data);
+          break;
+        case 'GAME_OVER':
+          print('🎮 GAME OVER! Winner: ${data['winner']}');
+          onGameOver?.call(data);
+          break;
+
+        // ✅ ADD THIS:
+        case 'NIGHT_RESULT':
+          print('🌙 Night result: ${data['message']}');
+          onNightResult?.call(data);
           break;
 
         default:

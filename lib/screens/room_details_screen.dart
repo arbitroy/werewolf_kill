@@ -82,7 +82,7 @@ class _RoomDetailsScreenState extends State<RoomDetailsScreen> {
               'Room ID: ${widget.roomId.substring(0, 8)}',
               style: TextStyle(
                 fontSize: 12,
-                color: Color(0xFFC0C0D8).withOpacity(0.6),
+                color: Color(0xFFC0C0D8).withValues(alpha: 0.6),
               ),
             ),
           ],
@@ -121,8 +121,8 @@ class _RoomDetailsScreenState extends State<RoomDetailsScreen> {
                   padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                   decoration: BoxDecoration(
                     color: isConnected 
-                        ? Color(0xFF2E7D32).withOpacity(0.2)
-                        : Color(0xFF8B0000).withOpacity(0.2),
+                        ? Color(0xFF2E7D32).withValues(alpha: 0.2)
+                        : Color(0xFF8B0000).withValues(alpha: 0.2),
                     borderRadius: BorderRadius.circular(8),
                     border: Border.all(
                       color: isConnected ? Color(0xFF2E7D32) : Color(0xFF8B0000),
@@ -141,7 +141,7 @@ class _RoomDetailsScreenState extends State<RoomDetailsScreen> {
                           boxShadow: isConnected
                               ? [
                                   BoxShadow(
-                                    color: Colors.green.withOpacity(0.5),
+                                    color: Colors.green.withValues(alpha: 0.5),
                                     blurRadius: 8,
                                     spreadRadius: 2,
                                   ),
@@ -153,7 +153,7 @@ class _RoomDetailsScreenState extends State<RoomDetailsScreen> {
                       Text(
                         isConnected ? 'Connected - Live Updates' : 'Connecting...',
                         style: TextStyle(
-                          color: Color(0xFFC0C0D8).withOpacity(0.9),
+                          color: Color(0xFFC0C0D8).withValues(alpha: 0.9),
                           fontSize: 12,
                           fontWeight: FontWeight.w500,
                         ),
@@ -176,12 +176,12 @@ class _RoomDetailsScreenState extends State<RoomDetailsScreen> {
                     ),
                     borderRadius: BorderRadius.circular(16),
                     border: Border.all(
-                      color: Color(0xFFD4AF37).withOpacity(0.3),
+                      color: Color(0xFFD4AF37).withValues(alpha: 0.3),
                       width: 1,
                     ),
                     boxShadow: [
                       BoxShadow(
-                        color: Colors.black.withOpacity(0.3),
+                        color: Colors.black.withValues(alpha: 0.3),
                         blurRadius: 10,
                         offset: Offset(0, 5),
                       ),
@@ -252,7 +252,7 @@ class _RoomDetailsScreenState extends State<RoomDetailsScreen> {
                         Text(
                           'Waiting for players to connect...',
                           style: TextStyle(
-                            color: Color(0xFFC0C0D8).withOpacity(0.7),
+                            color: Color(0xFFC0C0D8).withValues(alpha: 0.7),
                             fontSize: 16,
                           ),
                         ),
@@ -304,7 +304,7 @@ class _RoomDetailsScreenState extends State<RoomDetailsScreen> {
     return Container(
       padding: EdgeInsets.symmetric(horizontal: 12, vertical: 6),
       decoration: BoxDecoration(
-        color: color.withOpacity(0.2),
+        color: color.withValues(alpha: 0.2),
         borderRadius: BorderRadius.circular(20),
         border: Border.all(color: color, width: 1),
       ),
@@ -329,13 +329,13 @@ class _RoomDetailsScreenState extends State<RoomDetailsScreen> {
   Widget _buildInfoItem(String label, String value, IconData icon) {
     return Column(
       children: [
-        Icon(icon, color: Color(0xFFC0C0D8).withOpacity(0.6), size: 24),
+        Icon(icon, color: Color(0xFFC0C0D8).withValues(alpha: 0.6), size: 24),
         SizedBox(height: 4),
         Text(
           label,
           style: TextStyle(
             fontSize: 12,
-            color: Color(0xFFC0C0D8).withOpacity(0.6),
+            color: Color(0xFFC0C0D8).withValues(alpha: 0.6),
           ),
         ),
         Text(
@@ -360,15 +360,15 @@ class _RoomDetailsScreenState extends State<RoomDetailsScreen> {
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
           colors: [
-            Color(0xFF1A0F2E).withOpacity(0.8),
-            Color(0xFF2A1F3E).withOpacity(0.8),
+            Color(0xFF1A0F2E).withValues(alpha: 0.8),
+            Color(0xFF2A1F3E).withValues(alpha: 0.8),
           ],
         ),
         borderRadius: BorderRadius.circular(12),
         border: Border.all(
           color: isMe
-              ? Color(0xFFD4AF37).withOpacity(0.5)
-              : Color(0xFFC0C0D8).withOpacity(0.2),
+              ? Color(0xFFD4AF37).withValues(alpha: 0.5)
+              : Color(0xFFC0C0D8).withValues(alpha: 0.2),
           width: 1,
         ),
       ),
@@ -411,7 +411,7 @@ class _RoomDetailsScreenState extends State<RoomDetailsScreen> {
             ? Container(
                 padding: EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                 decoration: BoxDecoration(
-                  color: Color(0xFFD4AF37).withOpacity(0.2),
+                  color: Color(0xFFD4AF37).withValues(alpha: 0.2),
                   borderRadius: BorderRadius.circular(20),
                   border: Border.all(color: Color(0xFFD4AF37), width: 1),
                 ),
@@ -453,7 +453,7 @@ class _RoomDetailsScreenState extends State<RoomDetailsScreen> {
             color: Color(0xFF1A0F2E),
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withOpacity(0.3),
+                color: Colors.black.withValues(alpha: 0.3),
                 blurRadius: 10,
                 offset: Offset(0, -5),
               ),
@@ -531,7 +531,7 @@ class _RoomDetailsScreenState extends State<RoomDetailsScreen> {
         ),
         content: Text(
           'Are you sure you want to leave this room?',
-          style: TextStyle(color: Color(0xFFC0C0D8).withOpacity(0.7)),
+          style: TextStyle(color: Color(0xFFC0C0D8).withValues(alpha: 0.7)),
         ),
         actions: [
           TextButton(

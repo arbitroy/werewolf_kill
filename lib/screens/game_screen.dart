@@ -70,7 +70,7 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
 
         return Positioned.fill(
           child: Container(
-            color: Colors.black.withOpacity(0.8),
+            color: Colors.black.withValues(alpha: 0.8),
             child: Center(
               child: Column(
                 mainAxisSize: MainAxisSize.min,
@@ -92,7 +92,7 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
                     style: TextStyle(
                       fontFamily: 'Lora',
                       fontSize: 18,
-                      color: Colors.white.withOpacity(0.8),
+                      color: Colors.white.withValues(alpha: 0.8),
                     ),
                     textAlign: TextAlign.center,
                   ),
@@ -100,7 +100,7 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
                   Container(
                     padding: EdgeInsets.symmetric(horizontal: 24, vertical: 12),
                     decoration: BoxDecoration(
-                      color: Colors.black.withOpacity(0.5),
+                      color: Colors.black.withValues(alpha: 0.5),
                       borderRadius: BorderRadius.circular(10),
                       border: Border.all(color: Color(0xFFD4AF37), width: 2),
                     ),
@@ -125,6 +125,52 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
 
   @override
   Widget build(BuildContext context) {
+    final gameProvider = Provider.of<GameProvider>(context);
+
+    // ✅ CHECK FOR GAME OVER
+    if (gameProvider.gameOverWinner != null) {
+      // Show game over dialog
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        showDialog(
+          context: context,
+          barrierDismissible: false,
+          builder: (context) => AlertDialog(
+            backgroundColor: Color(0xFF1A0F2E),
+            title: Text(
+              '🎮 GAME OVER',
+              style: TextStyle(fontFamily: 'Cinzel', color: Color(0xFFD4AF37)),
+            ),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  gameProvider.gameOverWinner == 'WEREWOLVES'
+                      ? '🐺 WEREWOLVES WIN!'
+                      : '👥 VILLAGERS WIN!',
+                  style: TextStyle(
+                    fontFamily: 'Cinzel',
+                    fontSize: 24,
+                    color: Colors.white,
+                  ),
+                ),
+              ],
+            ),
+            actions: [
+              ElevatedButton(
+                onPressed: () {
+                  Navigator.of(context).popUntil((route) => route.isFirst);
+                },
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Color(0xFFD4AF37),
+                ),
+                child: Text('Return to Lobby'),
+              ),
+            ],
+          ),
+        );
+      });
+    }
+
     return Consumer<GameProvider>(
       builder: (context, gameProvider, child) {
         final gameState = gameProvider.gameState;
@@ -232,7 +278,7 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
     return Container(
       padding: EdgeInsets.symmetric(horizontal: 24, vertical: 12),
       decoration: BoxDecoration(
-        color: Colors.black.withOpacity(0.3),
+        color: Colors.black.withValues(alpha: 0.3),
         borderRadius: BorderRadius.circular(20),
         border: Border.all(
           color: isNight ? Color(0xFFC0C0D8) : Color(0xFFFFE4B5),
@@ -266,8 +312,8 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
                   fontFamily: 'Lora',
                   fontSize: 14,
                   color: isNight
-                      ? Color(0xFFC0C0D8).withOpacity(0.8)
-                      : Colors.white.withOpacity(0.8),
+                      ? Color(0xFFC0C0D8).withValues(alpha: 0.8)
+                      : Colors.white.withValues(alpha: 0.8),
                 ),
               ),
             ],
@@ -278,9 +324,8 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
   }
 
   Widget _buildPhaseIndicator(GameState? gameState, bool isNight) {
-    if (gameState == null || gameState.phaseEndTime == null) {
-      // Fallback for old format
-      return _buildStaticPhaseIndicator(gameState, isNight);
+    if (gameState == null) {
+      return Container();
     }
 
     return Column(
@@ -289,7 +334,7 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
         Container(
           padding: EdgeInsets.symmetric(horizontal: 20, vertical: 8),
           decoration: BoxDecoration(
-            color: Colors.black.withOpacity(0.3),
+            color: Colors.black.withValues(alpha: 0.3),
             borderRadius: BorderRadius.circular(20),
             border: Border.all(
               color: isNight ? Color(0xFFC0C0D8) : Color(0xFFFFE4B5),
@@ -321,22 +366,22 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
                   fontFamily: 'Lora',
                   fontSize: 14,
                   color: (isNight ? Color(0xFFC0C0D8) : Colors.white)
-                      .withOpacity(0.8),
+                      .withValues(alpha: 0.8),
                 ),
               ),
             ],
           ),
         ),
         SizedBox(height: 12),
-        // ✅ COUNTDOWN TIMER
-        CountdownTimer(
-          endTimeMs: gameState.phaseEndTime!,
-          isNight: isNight,
-          onComplete: () {
-            print('⏰ Phase timer completed on client side');
-            // Phase should auto-transition from backend
-          },
-        ),
+        // ✅ TIMER - Always show if we have phaseEndTime
+        if (gameState.phaseEndTime != null && gameState.phaseEndTime! > 0)
+          CountdownTimer(
+            endTimeMs: gameState.phaseEndTime!,
+            isNight: isNight,
+            onComplete: () {
+              print('⏰ Phase timer completed');
+            },
+          ),
       ],
     );
   }
@@ -361,7 +406,7 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
       margin: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       padding: EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: Color(0xFFD4AF37).withOpacity(0.2),
+        color: Color(0xFFD4AF37).withValues(alpha: 0.2),
         borderRadius: BorderRadius.circular(12),
         border: Border.all(color: Color(0xFFD4AF37)),
       ),
@@ -388,7 +433,7 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
       margin: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       padding: EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: Color(0xFF2E7D32).withOpacity(0.2),
+        color: Color(0xFF2E7D32).withValues(alpha: 0.2),
         borderRadius: BorderRadius.circular(12),
         border: Border.all(color: Color(0xFF2E7D32)),
       ),
@@ -467,7 +512,7 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
           boxShadow: isSelected
               ? [
                   BoxShadow(
-                    color: Colors.red.withOpacity(0.5),
+                    color: Colors.red.withValues(alpha: 0.5),
                     blurRadius: 20,
                     spreadRadius: 5,
                   ),
@@ -543,7 +588,7 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
         color: Color(0xFF1A0F2E),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.3),
+            color: Colors.black.withValues(alpha: 0.3),
             blurRadius: 10,
             offset: Offset(0, -4),
           ),
@@ -572,7 +617,7 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
         color: Color(0xFF1A0F2E),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.3),
+            color: Colors.black.withValues(alpha: 0.3),
             blurRadius: 10,
             offset: Offset(0, -4),
           ),
@@ -654,7 +699,7 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
         color: Color(0xFF1A0F2E),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.3),
+            color: Colors.black.withValues(alpha: 0.3),
             blurRadius: 10,
             offset: Offset(0, -4),
           ),
